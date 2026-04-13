@@ -1,0 +1,8 @@
+{
+  "name": "manual-scenario-worker",
+  "main": "src/index.js",
+  "compatibility_date": "2026-04-13",
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  }
+}
