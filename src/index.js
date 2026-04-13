@@ -594,39 +594,84 @@ function renderAppHtml() {
     '    var events = [];' +
     '    var scenarios = [];' +
 
-    '    async function boot() {' +
-    '      events = await fetch("/api/events/manual").then(function(r){ return r.json(); });' +
-    '      scenarios = await fetch("/api/scenarios").then(function(r){ return r.json(); });' +
-    '      fillEvents();' +
-    '      fillScenarios();' +
-    '      await reloadJobs();' +
-    '    }' +
+    '    async function boot() {'+
+  'try {'+
+    'var eventsResp = await fetch("/api/events/manual");'+
+    'var scenariosResp = await fetch("/api/scenarios");'+
 
-    '    function fillEvents() {' +
-    '      var el = document.getElementById("eventSelect");' +
-    '      el.innerHTML = "";' +
-    '      events.forEach(function(ev) {' +
-    '        var opt = document.createElement("option");' +
-    '        opt.value = ev.id;' +
-    '        opt.textContent = ((ev.trigger_type && (ev.trigger_type.label || ev.trigger_type.code)) || "Événement") + " — zone " + ev.zone_cible + " — " + ev.dedupe_key;' +
-    '        el.appendChild(opt);' +
-    '      });' +
-    '      updateEventInfo();' +
-    '      el.addEventListener("change", updateEventInfo);' +
-    '    }' +
+    'var eventsData = await eventsResp.json();'+
+    'var scenariosData = await scenariosResp.json();'+
 
-    '    function fillScenarios() {' +
-    '      var el = document.getElementById("scenarioSelect");' +
-    '      el.innerHTML = "";' +
-    '      scenarios.forEach(function(sc) {' +
-    '        var opt = document.createElement("option");' +
-    '        opt.value = sc.id;' +
-    '        opt.textContent = sc.label + " (" + sc.code + ")";' +
-    '        el.appendChild(opt);' +
-    '      });' +
-    '      updateScenarioInfo();' +
-    '      el.addEventListener("change", updateScenarioInfo);' +
-    '    }' +
+    'if (!eventsResp.ok) {'+
+     ' throw new Error("Erreur /api/events/manual : " + (eventsData.error || "erreur inconnue"));'+
+    '}'+
+
+    'if (!scenariosResp.ok) {'+
+   '   throw new Error("Erreur /api/scenarios : " + (scenariosData.error || "erreur inconnue"));'+
+  '  }'+
+
+ '   if (!Array.isArray(eventsData)) {'+
+'      throw new Error("La route /api/events/manual ne renvoie pas un tableau.");'+
+ '   }
+
+  '  if (!Array.isArray(scenariosData)) {'+
+ '     throw new Error("La route /api/scenarios ne renvoie pas un tableau.");'+
+'    }'+
+
+'    events = eventsData;'+
+'    scenarios = scenariosData;'+
+
+'    fillEvents();'+
+'    fillScenarios();'+
+'    await reloadJobs();'+
+'  } catch (e) {'+
+'    document.getElementById("result").textContent ='+
+'      "Erreur au chargement :\\n\\n" + (e.message || String(e));'+
+'  }'+
+'}   ' +
+
+'function fillEvents() {'+
+ ' var el = document.getElementById("eventSelect");'+
+  'el.innerHTML = "";'+
+
+ ' if (!Array.isArray(events)) {'+
+'    document.getElementById("eventInfo").textContent = "Aucun événement exploitable reçu.";'+
+ '   return;'+
+  '}'+
+
+  'events.forEach(function(ev) {'+
+   ' var opt = document.createElement("option");'+
+    'opt.value = ev.id;'+
+    'opt.textContent ='+
+     ' ((ev.trigger_type && (ev.trigger_type.label || ev.trigger_type.code)) || "Événement") +'+
+      '" — zone " + ev.zone_cible +'+
+      '" — " + ev.dedupe_key;'+
+    'el.appendChild(opt);'+
+  '});'+
+
+  'updateEventInfo();'+
+  'el.addEventListener("change", updateEventInfo);'+
+'}'+
+
+'function fillScenarios() {'+
+ ' var el = document.getElementById("scenarioSelect");'+
+  'el.innerHTML = "";'+
+
+  'if (!Array.isArray(scenarios)) {'+
+   ' document.getElementById("scenarioInfo").textContent = "Aucun scénario exploitable reçu.";'+
+    'return;'+
+  '}'+
+
+  'scenarios.forEach(function(sc) {'+
+   ' var opt = document.createElement("option");'+
+    'opt.value = sc.id;'+
+    'opt.textContent = sc.label + " (" + sc.code + ")";'+
+    'el.appendChild(opt);'+
+  '});'+
+
+  'updateScenarioInfo();'+
+  'el.addEventListener("change", updateScenarioInfo);'+
+'}'+
 
     '    function updateEventInfo() {' +
     '      var id = Number(document.getElementById("eventSelect").value);' +
