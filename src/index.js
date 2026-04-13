@@ -560,210 +560,110 @@ function withCors(response) {
 }
 
 function renderAppHtml() {
-  return '<!DOCTYPE html>' +
-    '<html lang="fr">' +
-    '<head>' +
-    '  <meta charset="UTF-8" />' +
-    '  <meta name="viewport" content="width=device-width, initial-scale=1.0" />' +
-    '  <title>Pilotage manuel des scénarios</title>' +
-    '  <style>' +
-    '    body{font-family:Arial,sans-serif;background:#f5f7fb;color:#111827;margin:0}' +
-    '    header{background:#111827;color:#fff;padding:18px 22px}' +
-    '    main{padding:20px;max-width:1200px;margin:0 auto}' +
-    '    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}' +
-    '    .card{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:16px}' +
-    '    h1,h2,h3{margin-top:0}.muted{color:#6b7280;font-size:13px}' +
-    '    select,button,input,textarea{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;margin-bottom:12px;box-sizing:border-box}' +
-    '    button{background:#111827;color:#fff;cursor:pointer}' +
-    '    button.secondary{background:#e5e7eb;color:#111827}' +
-    '    .result{white-space:pre-wrap;background:#0f172a;color:#e2e8f0;border-radius:12px;padding:12px;font-size:13px;min-height:140px}' +
-    '    table{width:100%;border-collapse:collapse;font-size:13px}.table-wrap{overflow:auto}' +
-    '    th,td{padding:8px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}' +
-    '    code{background:#f3f4f6;padding:2px 6px;border-radius:6px;color:#111827}' +
-    '    .tabs{display:flex;gap:10px;margin-bottom:16px}' +
-    '    .tab{background:#e5e7eb;color:#111827;border:none;padding:10px 14px;border-radius:10px;cursor:pointer;width:auto}' +
-    '    .tab.active{background:#111827;color:#fff}' +
-    '    .panel{display:none}.panel.active{display:block}' +
-    '    @media (max-width: 900px){.grid{grid-template-columns:1fr}}' +
-    '  </style>' +
-    '</head>' +
-    '<body>' +
-    '  <header>' +
-    '    <h1>Pilotage des envois</h1>' +
-    '    <div class="muted" style="color:#cbd5e1">Suivi automatique + lancement manuel d’un scénario sans demander un événement à l’utilisateur.</div>' +
-    '  </header>' +
-    '  <main>' +
-    '    <div class="tabs">' +
-    '      <button class="tab active" id="tabAuto" onclick="showPanel(\'auto\')">Suivi automatique</button>' +
-    '      <button class="tab" id="tabManual" onclick="showPanel(\'manual\')">Lancement manuel</button>' +
-    '    </div>' +
-    '    <section id="panelAuto" class="panel active">' +
-    '      <div class="card" style="margin-bottom:16px;">' +
-    '        <h2>Messages programmés</h2>' +
-    '        <div class="table-wrap">' +
-    '          <table>' +
-    '            <thead><tr><th>ID</th><th>Client</th><th>Scénario</th><th>Étape</th><th>Envoi prévu</th><th>Statut</th></tr></thead>' +
-    '            <tbody id="jobsBody"></tbody>' +
-    '          </table>' +
-    '        </div>' +
-    '        <button class="secondary" onclick="reloadJobs()">Rafraîchir les messages programmés</button>' +
-    '        <button class="secondary" onclick="processDue()">Traiter les envois dus maintenant</button>' +
-    '      </div>' +
-    '      <div class="card">' +
-    '        <h2>Emails générés</h2>' +
-    '        <div class="table-wrap">' +
-    '          <table>' +
-    '            <thead><tr><th>ID</th><th>Client</th><th>Date</th><th>Objet</th><th>Statut</th></tr></thead>' +
-    '            <tbody id="emailsBody"></tbody>' +
-    '          </table>' +
-    '        </div>' +
-    '        <button class="secondary" onclick="reloadEmails()">Rafraîchir les emails</button>' +
-    '      </div>' +
-    '    </section>' +
-    '    <section id="panelManual" class="panel">' +
-    '      <div class="grid">' +
-    '        <section class="card">' +
-    '          <h2>1. Choisir un scénario</h2>' +
-    '          <select id="scenarioSelect"></select>' +
-    '          <div id="scenarioInfo" class="muted"></div>' +
-    '        </section>' +
-    '        <section class="card">' +
-    '          <h2>2. Choisir la cible</h2>' +
-    '          <select id="targetMode">' +
-    '            <option value="all">Tous les clients actifs</option>' +
-    '            <option value="zone">Clients d’une zone</option>' +
-    '          </select>' +
-    '          <input id="targetZone" placeholder="Ex. 56" />' +
-    '          <div id="clientSummary" class="muted"></div>' +
-    '        </section>' +
-    '      </div>' +
-    '      <section class="card" style="margin-top:16px;">' +
-    '        <h2>3. Date de départ</h2>' +
-    '        <input id="startAt" type="datetime-local" />' +
-    '        <div class="muted">L’interface créera en interne un événement technique caché de type <code>MANUAL_TRIGGER</code>.</div>' +
-    '      </section>' +
-    '      <section class="card" style="margin-top:16px;">' +
-    '        <h2>4. Déclencher</h2>' +
-    '        <button class="secondary" onclick="launchManual(true,false)">Simuler sans écrire en base</button>' +
-    '        <button onclick="launchManual(false,false)">Programmer les messages</button>' +
-    '        <button onclick="launchManual(false,true)">Programmer et envoyer tout ce qui est dû maintenant</button>' +
-    '        <div class="muted">Pour programmer un second message 24h plus tard, ajoutez dans le step 2 : <code>logic_json.delay_hours_after_previous = 24</code>.</div>' +
-    '      </section>' +
-    '    </section>' +
-    '    <section class="card" style="margin-top:16px;">' +
-    '      <h2>Résultat</h2>' +
-    '      <div id="result" class="result">Aucune action exécutée.</div>' +
-    '    </section>' +
-    '  </main>' +
-    '  <script>' +
-    '    var scenarios = [];' +
-    '    function showPanel(name){' +
-    '      document.getElementById("panelAuto").className = "panel" + (name === "auto" ? " active" : "");' +
-    '      document.getElementById("panelManual").className = "panel" + (name === "manual" ? " active" : "");' +
-    '      document.getElementById("tabAuto").className = "tab" + (name === "auto" ? " active" : "");' +
-    '      document.getElementById("tabManual").className = "tab" + (name === "manual" ? " active" : "");' +
-    '    }' +
-    '    async function boot(){' +
-    '      try {' +
-    '        var scenariosResp = await fetch("/api/scenarios");' +
-    '        var scenariosData = await scenariosResp.json();' +
-    '        if (!scenariosResp.ok) throw new Error("Erreur /api/scenarios : " + (scenariosData.error || "erreur inconnue"));' +
-    '        if (!Array.isArray(scenariosData)) throw new Error("/api/scenarios ne renvoie pas un tableau");' +
-    '        scenarios = scenariosData;' +
-    '        fillScenarios();' +
-    '        await reloadJobs();' +
-    '        await reloadEmails();' +
-    '        await loadClientSummary();' +
-    '        setDefaultStartAt();' +
-    '      } catch (e) {' +
-    '        document.getElementById("result").textContent = "Erreur au chargement :\n\n" + (e.message || String(e));' +
-    '      }' +
-    '    }' +
-    '    function setDefaultStartAt(){' +
-    '      var d = new Date();' +
-    '      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());' +
-    '      document.getElementById("startAt").value = d.toISOString().slice(0,16);' +
-    '    }' +
-    '    function fillScenarios(){' +
-    '      var el = document.getElementById("scenarioSelect");' +
-    '      el.innerHTML = "";' +
-    '      scenarios.forEach(function(sc){' +
-    '        var opt = document.createElement("option");' +
-    '        opt.value = sc.id;' +
-    '        opt.textContent = sc.label + " (" + sc.code + ")";' +
-    '        el.appendChild(opt);' +
-    '      });' +
-    '      updateScenarioInfo();' +
-    '      el.addEventListener("change", updateScenarioInfo);' +
-    '    }' +
-    '    async function updateScenarioInfo(){' +
-    '      var id = Number(document.getElementById("scenarioSelect").value);' +
-    '      var sc = scenarios.find(function(x){ return x.id === id; });' +
-    '      if (!sc) return;' +
-    '      var steps = await fetch("/api/scenarios/" + id + "/steps").then(function(r){ return r.json(); });' +
-    '      var lines = Array.isArray(steps) ? steps.map(function(s){' +
-    '        var delay = Number((s.logic_json && s.logic_json.delay_hours_after_previous) || 0);' +
-    '        return s.code + " — ordre " + s.step_order + " — délai après précédent : " + delay + "h";' +
-    '      }) : [];' +
-    '      document.getElementById("scenarioInfo").textContent = sc.aggregation_mode + " — priorité " + sc.priority + "\n" + lines.join("\n");' +
-    '    }' +
-    '    async function loadClientSummary(){' +
-    '      var data = await fetch("/api/clients/summary").then(function(r){ return r.json(); });' +
-    '      var lines = ["Clients actifs : " + data.total_clients];' +
-    '      var zones = data.zones || {};' +
-    '      Object.keys(zones).sort().forEach(function(z){ lines.push("Zone " + z + " : " + zones[z] + " client(s)"); });' +
-    '      document.getElementById("clientSummary").textContent = lines.join("\n");' +
-    '    }' +
-    '    async function launchManual(dry_run, trigger_send_immediately){' +
-    '      var scenario_id = Number(document.getElementById("scenarioSelect").value);' +
-    '      var target_mode = document.getElementById("targetMode").value;' +
-    '      var target_zone = document.getElementById("targetZone").value.trim();' +
-    '      var start_at = document.getElementById("startAt").value ? new Date(document.getElementById("startAt").value).toISOString() : null;' +
-    '      var res = await fetch("/api/manual-launch", {' +
-    '        method: "POST",' +
-    '        headers: { "Content-Type": "application/json" },' +
-    '        body: JSON.stringify({' +
-    '          scenario_id: scenario_id,' +
-    '          target_mode: target_mode,' +
-    '          target_zone: target_zone,' +
-    '          start_at: start_at,' +
-    '          dry_run: dry_run,' +
-    '          trigger_send_immediately: trigger_send_immediately' +
-    '        })' +
-    '      });' +
-    '      var data = await res.json();' +
-    '      document.getElementById("result").textContent = JSON.stringify(data, null, 2);' +
-    '      await reloadJobs();' +
-    '      await reloadEmails();' +
-    '    }' +
-    '    async function reloadJobs(){' +
-    '      var rows = await fetch("/api/jobs").then(function(r){ return r.json(); });' +
-    '      var body = document.getElementById("jobsBody");' +
-    '      body.innerHTML = "";' +
-    '      rows.forEach(function(r){' +
-    '        var tr = document.createElement("tr");' +
-    '        tr.innerHTML = "<td>" + r.id + "</td><td>" + r.client_id + "</td><td>" + r.scenario_id + "</td><td>" + r.scenario_step_id + "</td><td>" + (r.planned_send_at || "") + "</td><td>" + r.status + "</td>";' +
-    '        body.appendChild(tr);' +
-    '      });' +
-    '    }' +
-    '    async function reloadEmails(){' +
-    '      var rows = await fetch("/api/outbound-emails").then(function(r){ return r.json(); });' +
-    '      var body = document.getElementById("emailsBody");' +
-    '      body.innerHTML = "";' +
-    '      rows.forEach(function(r){' +
-    '        var tr = document.createElement("tr");' +
-    '        tr.innerHTML = "<td>" + r.id + "</td><td>" + r.client_id + "</td><td>" + (r.send_date || "") + "</td><td>" + (r.subject_rendered || "") + "</td><td>" + r.status + "</td>";' +
-    '        body.appendChild(tr);' +
-    '      });' +
-    '    }' +
-    '    async function processDue(){' +
-    '      var data = await fetch("/api/process-due", { method: "POST" }).then(function(r){ return r.json(); });' +
-    '      document.getElementById("result").textContent = JSON.stringify(data, null, 2);' +
-    '      await reloadJobs();' +
-    '      await reloadEmails();' +
-    '    }' +
-    '    boot();' +
-    '  </script>' +
-    '</body>' +
-    '</html>';
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pilotage des envois</title>
+  <style>
+    body{font-family:Arial,sans-serif;background:#f5f7fb;color:#111827;margin:0}
+    header{background:#111827;color:#fff;padding:18px 22px}
+    main{padding:20px;max-width:1200px;margin:0 auto}
+    .tabs{display:flex;gap:10px;margin-bottom:16px}
+    .tab{background:#e5e7eb;padding:10px;border-radius:10px;cursor:pointer}
+    .tab.active{background:#111827;color:#fff}
+    .panel{display:none}
+    .panel.active{display:block}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:16px;margin-bottom:16px}
+    button{padding:10px;border-radius:10px;border:none;cursor:pointer}
+    .secondary{background:#e5e7eb}
+  </style>
+</head>
+<body>
+<header>
+<h1>Pilotage</h1>
+</header>
+<main>
+
+<div class="tabs">
+<button onclick="showPanel('auto')" id="tabAuto" class="tab active">Suivi</button>
+<button onclick="showPanel('manual')" id="tabManual" class="tab">Manuel</button>
+</div>
+
+<div id="panelAuto" class="panel active">
+<div class="card">
+<h2>Messages programmés</h2>
+<button onclick="reloadJobs()">Rafraîchir</button>
+<div id="jobs"></div>
+</div>
+</div>
+
+<div id="panelManual" class="panel">
+<div class="card">
+<h2>Lancer un scénario</h2>
+<select id="scenarioSelect"></select>
+<input id="zone" placeholder="Zone (optionnel)">
+<button onclick="launchManual()">Lancer</button>
+</div>
+</div>
+
+<script>
+function showPanel(name){
+  document.getElementById('panelAuto').classList.remove('active');
+  document.getElementById('panelManual').classList.remove('active');
+  document.getElementById('tabAuto').classList.remove('active');
+  document.getElementById('tabManual').classList.remove('active');
+
+  if(name==='auto'){
+    document.getElementById('panelAuto').classList.add('active');
+    document.getElementById('tabAuto').classList.add('active');
+  } else {
+    document.getElementById('panelManual').classList.add('active');
+    document.getElementById('tabManual').classList.add('active');
+  }
+}
+
+async function boot(){
+  const scenarios = await fetch('/api/scenarios').then(r=>r.json());
+  const select = document.getElementById('scenarioSelect');
+  scenarios.forEach(s=>{
+    const opt=document.createElement('option');
+    opt.value=s.id;
+    opt.textContent=s.label;
+    select.appendChild(opt);
+  });
+  reloadJobs();
+}
+
+async function reloadJobs(){
+  const data = await fetch('/api/jobs').then(r=>r.json());
+  document.getElementById('jobs').textContent = JSON.stringify(data,null,2);
+}
+
+async function launchManual(){
+  const scenario_id = Number(document.getElementById('scenarioSelect').value);
+  const zone = document.getElementById('zone').value;
+
+  const res = await fetch('/api/manual-launch',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      scenario_id,
+      target_mode: zone ? 'zone':'all',
+      target_zone: zone
+    })
+  });
+
+  const data = await res.json();
+  alert(JSON.stringify(data,null,2));
+  reloadJobs();
+}
+
+boot();
+</script>
+
+</main>
+</body>
+</html>`;
 }
