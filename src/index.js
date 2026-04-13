@@ -612,7 +612,7 @@ function renderAppHtml() {
 
  '   if (!Array.isArray(eventsData)) {'+
 '      throw new Error("La route /api/events/manual ne renvoie pas un tableau.");'+
- '   }
+ '   }'+
 
   '  if (!Array.isArray(scenariosData)) {'+
  '     throw new Error("La route /api/scenarios ne renvoie pas un tableau.");'+
