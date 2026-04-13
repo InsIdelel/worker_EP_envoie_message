@@ -567,381 +567,448 @@ function renderAppHtml() {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Pilotage des envois</title>
   <style>
-    body{font-family:Arial,sans-serif;background:#f5f7fb;color:#111827;margin:0}
-    header{background:#111827;color:#fff;padding:18px 22px}
-    main{padding:20px;max-width:1280px;margin:0 auto}
-    .tabs{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
-    .tab{background:#e5e7eb;padding:10px 14px;border-radius:10px;cursor:pointer;border:none}
-    .tab.active{background:#111827;color:#fff}
-    .panel{display:none}
-    .panel.active{display:block}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-    .card{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:16px;margin-bottom:16px}
-    .muted{color:#6b7280;font-size:13px}
-    .help{color:#6b7280;font-size:12px;margin-top:-6px;margin-bottom:10px}
-    h1,h2,h3{margin-top:0}
-    button,input,select,textarea{padding:10px 12px;border-radius:10px;border:1px solid #d1d5db;box-sizing:border-box;font-size:14px}
-    button{cursor:pointer;background:#111827;color:#fff;border:none}
-    button.secondary{background:#e5e7eb;color:#111827}
-    button.success{background:#065f46}
-    .row{display:flex;gap:10px;flex-wrap:wrap}
-    .row > *{flex:1}
-    .result{white-space:pre-wrap;background:#0f172a;color:#e2e8f0;border-radius:12px;padding:12px;font-size:13px;min-height:140px}
-    .table-wrap{overflow:auto}
-    table{width:100%;border-collapse:collapse;font-size:13px}
-    th,td{padding:8px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}
-    th{background:#f9fafb;position:sticky;top:0}
-    .pill{display:inline-block;background:#f3f4f6;border-radius:999px;padding:4px 8px;font-size:12px}
-    .ok{color:#065f46}.warn{color:#92400e}.err{color:#991b1b}
-    .preview-box{white-space:pre-wrap;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px;min-height:220px}
-    .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
-    .kpi{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:16px}
-    .kpi .v{font-size:28px;font-weight:bold}
-    @media (max-width: 980px){.grid,.kpis{grid-template-columns:1fr}}
+    body { font-family: Arial, sans-serif; background:#f5f7fb; color:#111827; margin:0; }
+    header { background:#111827; color:#fff; padding:18px 22px; }
+    main { padding:20px; max-width:1280px; margin:0 auto; }
+    .tabs { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
+    .tab { background:#e5e7eb; padding:10px 14px; border-radius:10px; cursor:pointer; border:none; }
+    .tab.active { background:#111827; color:#fff; }
+    .panel { display:none; }
+    .panel.active { display:block; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .card { background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:16px; margin-bottom:16px; }
+    .muted { color:#6b7280; font-size:13px; }
+    .help { color:#6b7280; font-size:12px; margin-top:-6px; margin-bottom:10px; }
+    h1,h2,h3 { margin-top:0; }
+    button,input,select,textarea {
+      padding:10px 12px;
+      border-radius:10px;
+      border:1px solid #d1d5db;
+      box-sizing:border-box;
+      font-size:14px;
+    }
+    button { cursor:pointer; background:#111827; color:#fff; border:none; }
+    button.secondary { background:#e5e7eb; color:#111827; }
+    button.success { background:#065f46; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; }
+    .row > * { flex:1; }
+    .result {
+      white-space:pre-wrap;
+      background:#0f172a;
+      color:#e2e8f0;
+      border-radius:12px;
+      padding:12px;
+      font-size:13px;
+      min-height:140px;
+    }
+    .table-wrap { overflow:auto; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th,td { padding:8px; border-bottom:1px solid #e5e7eb; text-align:left; vertical-align:top; }
+    th { background:#f9fafb; position:sticky; top:0; }
+    .pill { display:inline-block; background:#f3f4f6; border-radius:999px; padding:4px 8px; font-size:12px; }
+    .preview-box {
+      white-space:pre-wrap;
+      background:#fff;
+      border:1px solid #e5e7eb;
+      border-radius:12px;
+      padding:12px;
+      min-height:220px;
+    }
+    .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
+    .kpi { background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:16px; }
+    .kpi .v { font-size:28px; font-weight:bold; }
+    code { background:#f3f4f6; padding:2px 6px; border-radius:6px; color:#111827; }
+    @media (max-width: 980px) {
+      .grid, .kpis { grid-template-columns:1fr; }
+    }
   </style>
 </head>
 <body>
-<header>
-  <h1>Pilotage des envois</h1>
-  <div class="muted" style="color:#cbd5e1">Suivi automatique + lancement manuel d’un scénario</div>
-</header>
-<main>
-  <div class="tabs">
-    <button onclick="showPanel('auto')" id="tabAuto" class="tab active">Suivi automatique</button>
-    <button onclick="showPanel('manual')" id="tabManual" class="tab">Lancement manuel</button>
-  </div>
+  <header>
+    <h1>Pilotage des envois</h1>
+    <div class="muted" style="color:#cbd5e1;">Suivi automatique + lancement manuel d’un scénario</div>
+  </header>
 
-  <div id="panelAuto" class="panel active">
-    <div class="kpis">
-      <div class="kpi"><div class="muted">Messages programmés</div><div class="v" id="kpiJobs">0</div></div>
-      <div class="kpi"><div class="muted">Prêts à partir</div><div class="v" id="kpiReady">0</div></div>
-      <div class="kpi"><div class="muted">Déjà envoyés</div><div class="v" id="kpiSent">0</div></div>
-      <div class="kpi"><div class="muted">Emails générés</div><div class="v" id="kpiEmails">0</div></div>
+  <main>
+    <div class="tabs">
+      <button type="button" onclick="showPanel('auto')" id="tabAuto" class="tab active">Suivi automatique</button>
+      <button type="button" onclick="showPanel('manual')" id="tabManual" class="tab">Lancement manuel</button>
     </div>
 
-    <div class="card" style="margin-top:16px;">
-      <h2>Messages programmés</h2>
-      <div class="row" style="margin-bottom:12px;">
-        <input id="jobsFilter" placeholder="Filtrer par client, scénario, statut..." oninput="renderJobsTable()" />
-        <button class="secondary" onclick="reloadJobsAndEmails()">Rafraîchir</button>
-        <button class="secondary" onclick="processDue()">Traiter les envois dus maintenant</button>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Client</th>
-              <th>Scénario</th>
-              <th>Étape</th>
-              <th>Prévu le</th>
-              <th>Objet</th>
-              <th>Statut</th>
-            </tr>
-          </thead>
-          <tbody id="jobsBody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Emails générés</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Client</th>
-              <th>Date d’envoi</th>
-              <th>Objet</th>
-              <th>Statut</th>
-            </tr>
-          </thead>
-          <tbody id="emailsBody"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <div id="panelManual" class="panel">
-    <div class="grid">
-      <div class="card">
-        <h2>1. Choisir un scénario</h2>
-        <select id="scenarioSelect"></select>
-        <div class="help">Choisissez le scénario que vous souhaitez lancer manuellement.</div>
-        <div id="scenarioInfo" class="preview-box"></div>
+    <div id="panelAuto" class="panel active">
+      <div class="kpis">
+        <div class="kpi"><div class="muted">Messages programmés</div><div class="v" id="kpiJobs">0</div></div>
+        <div class="kpi"><div class="muted">Prêts à partir</div><div class="v" id="kpiReady">0</div></div>
+        <div class="kpi"><div class="muted">Déjà envoyés</div><div class="v" id="kpiSent">0</div></div>
+        <div class="kpi"><div class="muted">Emails générés</div><div class="v" id="kpiEmails">0</div></div>
       </div>
 
-      <div class="card">
-        <h2>2. Choisir la cible</h2>
-        <select id="targetMode" onchange="toggleTargetInputs()">
-          <option value="all">Tous les clients actifs</option>
-          <option value="zone">Clients d’une zone</option>
-        </select>
-        <input id="targetZone" placeholder="Ex. 56" style="display:none" />
-        <div class="help">En mode manuel, l’interface crée en interne un événement technique caché de type MANUAL_TRIGGER.</div>
-        <div id="clientSummary" class="preview-box"></div>
-      </div>
-    </div>
-
-    <div class="grid">
-      <div class="card">
-        <h2>3. Date et heure de départ</h2>
-        <input id="startAt" type="datetime-local" />
-        <div class="help">C’est la date de départ du step 1. Les étapes suivantes seront calculées à partir de leurs délais.</div>
-      </div>
-
-      <div class="card">
-        <h2>4. Aperçu du lancement</h2>
-        <div class="row">
-          <button class="secondary" onclick="simulateManual()">Simuler</button>
-          <button onclick="launchManual(false)">Programmer</button>
-          <button class="success" onclick="launchManual(true)">Programmer et envoyer ce qui est dû maintenant</button>
+      <div class="card" style="margin-top:16px;">
+        <h2>Messages programmés</h2>
+        <div class="row" style="margin-bottom:12px;">
+          <input id="jobsFilter" placeholder="Filtrer par client, scénario, statut..." />
+          <button type="button" class="secondary" onclick="reloadJobsAndEmails()">Rafraîchir</button>
+          <button type="button" class="secondary" onclick="processDue()">Traiter les envois dus maintenant</button>
         </div>
-        <div class="help">Pour un 2e message 24h plus tard, le step 2 doit contenir <code>logic_json.delay_hours_after_previous = 24</code>.</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Client</th>
+                <th>Scénario</th>
+                <th>Étape</th>
+                <th>Prévu le</th>
+                <th>Objet</th>
+                <th>Statut</th>
+              </tr>
+            </thead>
+            <tbody id="jobsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Emails générés</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Client</th>
+                <th>Date d’envoi</th>
+                <th>Objet</th>
+                <th>Statut</th>
+              </tr>
+            </thead>
+            <tbody id="emailsBody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
-    <div class="card">
-      <h2>Résultat / simulation</h2>
-      <div id="result" class="result">Aucune action exécutée.</div>
+    <div id="panelManual" class="panel">
+      <div class="grid">
+        <div class="card">
+          <h2>1. Choisir un scénario</h2>
+          <select id="scenarioSelect"></select>
+          <div class="help">Choisissez le scénario que vous souhaitez lancer manuellement.</div>
+          <div id="scenarioInfo" class="preview-box"></div>
+        </div>
+
+        <div class="card">
+          <h2>2. Choisir la cible</h2>
+          <select id="targetMode">
+            <option value="all">Tous les clients actifs</option>
+            <option value="zone">Clients d’une zone</option>
+          </select>
+          <input id="targetZone" placeholder="Ex. 56" style="display:none;" />
+          <div class="help">En mode manuel, l’interface crée en interne un événement technique caché de type MANUAL_TRIGGER.</div>
+          <div id="clientSummary" class="preview-box"></div>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <h2>3. Date et heure de départ</h2>
+          <input id="startAt" type="datetime-local" />
+          <div class="help">C’est la date de départ du step 1. Les étapes suivantes seront calculées à partir de leurs délais.</div>
+        </div>
+
+        <div class="card">
+          <h2>4. Aperçu du lancement</h2>
+          <div class="row">
+            <button type="button" class="secondary" onclick="simulateManual()">Simuler</button>
+            <button type="button" onclick="launchManual(false)">Programmer</button>
+            <button type="button" class="success" onclick="launchManual(true)">Programmer et envoyer ce qui est dû maintenant</button>
+          </div>
+          <div class="help">Pour un 2e message 24h plus tard, le step 2 doit contenir <code>logic_json.delay_hours_after_previous = 24</code>.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Résultat / simulation</h2>
+        <div id="result" class="result">Aucune action exécutée.</div>
+      </div>
+
+      <div class="card">
+        <h2>Prévisualisation humaine</h2>
+        <div class="help">Cette zone reformate la simulation pour qu’elle soit lisible, sans JSON brut.</div>
+        <div id="manualPreview" class="preview-box">Lancez une simulation pour voir le détail.</div>
+      </div>
     </div>
+  </main>
 
-    <div class="card">
-      <h2>Prévisualisation humaine</h2>
-      <div class="help">Cette zone reformate la simulation pour qu’elle soit lisible, sans JSON brut.</div>
-      <div id="manualPreview" class="preview-box">Lancez une simulation pour voir le détail.</div>
-    </div>
-  </div>
-</main>
-<script>
-var scenarios = [];
-var jobsData = [];
-var emailsData = [];
+  <script>
+    var scenarios = [];
+    var jobsData = [];
+    var emailsData = [];
 
-function showPanel(name){
-  document.getElementById('panelAuto').classList.remove('active');
-  document.getElementById('panelManual').classList.remove('active');
-  document.getElementById('tabAuto').classList.remove('active');
-  document.getElementById('tabManual').classList.remove('active');
-  if(name==='auto'){
-    document.getElementById('panelAuto').classList.add('active');
-    document.getElementById('tabAuto').classList.add('active');
-  } else {
-    document.getElementById('panelManual').classList.add('active');
-    document.getElementById('tabManual').classList.add('active');
-  }
-}
+    function showPanel(name) {
+      document.getElementById('panelAuto').classList.remove('active');
+      document.getElementById('panelManual').classList.remove('active');
+      document.getElementById('tabAuto').classList.remove('active');
+      document.getElementById('tabManual').classList.remove('active');
 
-async function boot(){
-  try {
-    var scenariosResp = await fetch('/api/scenarios');
-    var scenariosData = await scenariosResp.json();
-    if (!scenariosResp.ok) throw new Error('Erreur /api/scenarios : ' + (scenariosData.error || 'erreur inconnue'));
-    if (!Array.isArray(scenariosData)) throw new Error('/api/scenarios ne renvoie pas un tableau');
-    scenarios = scenariosData;
-    fillScenarios();
-    setDefaultStartAt();
-    toggleTargetInputs();
-    await loadClientSummary();
-    await reloadJobsAndEmails();
-  } catch (e) {
-    document.getElementById('result').textContent = 'Erreur au chargement :
+      if (name === 'auto') {
+        document.getElementById('panelAuto').classList.add('active');
+        document.getElementById('tabAuto').classList.add('active');
+      } else {
+        document.getElementById('panelManual').classList.add('active');
+        document.getElementById('tabManual').classList.add('active');
+      }
+    }
 
-' + (e.message || String(e));
-  }
-}
+    async function boot() {
+      try {
+        var scenariosResp = await fetch('/api/scenarios');
+        var scenariosData = await scenariosResp.json();
 
-function setDefaultStartAt(){
-  var d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  document.getElementById('startAt').value = d.toISOString().slice(0,16);
-}
+        if (!scenariosResp.ok) {
+          throw new Error('Erreur /api/scenarios : ' + (scenariosData.error || 'erreur inconnue'));
+        }
 
-function fillScenarios(){
-  var el = document.getElementById('scenarioSelect');
-  el.innerHTML = '';
-  scenarios.forEach(function(sc){
-    var opt = document.createElement('option');
-    opt.value = sc.id;
-    opt.textContent = sc.label + ' (' + sc.code + ')';
-    el.appendChild(opt);
-  });
-  updateScenarioInfo();
-  el.addEventListener('change', updateScenarioInfo);
-}
+        if (!Array.isArray(scenariosData)) {
+          throw new Error('/api/scenarios ne renvoie pas un tableau');
+        }
 
-async function updateScenarioInfo(){
-  var id = Number(document.getElementById('scenarioSelect').value);
-  var sc = scenarios.find(function(x){ return x.id === id; });
-  if (!sc) return;
-  var steps = await fetch('/api/scenarios/' + id + '/steps').then(function(r){ return r.json(); });
-  var lines = [];
-  lines.push('Scénario : ' + sc.label);
-  lines.push('Mode : ' + sc.aggregation_mode);
-  lines.push('Priorité : ' + sc.priority);
-  lines.push('');
-  lines.push('Étapes :');
-  if (Array.isArray(steps)) {
-    steps.forEach(function(s){
-      var delay = Number((s.logic_json && s.logic_json.delay_hours_after_previous) || 0);
-      lines.push('- ' + s.code + ' | ordre ' + s.step_order + ' | délai après précédent : ' + delay + 'h');
-    });
-  }
-  document.getElementById('scenarioInfo').textContent = lines.join('
-');
-}
+        scenarios = scenariosData;
+        fillScenarios();
+        setDefaultStartAt();
+        toggleTargetInputs();
+        await loadClientSummary();
+        await reloadJobsAndEmails();
 
-function toggleTargetInputs(){
-  var mode = document.getElementById('targetMode').value;
-  document.getElementById('targetZone').style.display = mode === 'zone' ? 'block' : 'none';
-}
+        document.getElementById('jobsFilter').addEventListener('input', renderJobsTable);
+        document.getElementById('targetMode').addEventListener('change', toggleTargetInputs);
+      } catch (e) {
+        document.getElementById('result').textContent = 'Erreur au chargement :\\n\\n' + (e.message || String(e));
+      }
+    }
 
-async function loadClientSummary(){
-  var data = await fetch('/api/clients/summary').then(function(r){ return r.json(); });
-  var lines = ['Clients actifs : ' + data.total_clients];
-  var zones = data.zones || {};
-  Object.keys(zones).sort().forEach(function(z){
-    lines.push('Zone ' + z + ' : ' + zones[z] + ' client(s)');
-  });
-  document.getElementById('clientSummary').textContent = lines.join('
-');
-}
+    function setDefaultStartAt() {
+      var d = new Date();
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+      document.getElementById('startAt').value = d.toISOString().slice(0, 16);
+    }
 
-function buildManualPayload(dryRun, sendNow){
-  var scenario_id = Number(document.getElementById('scenarioSelect').value);
-  var target_mode = document.getElementById('targetMode').value;
-  var target_zone = document.getElementById('targetZone').value.trim();
-  var start_at = document.getElementById('startAt').value ? new Date(document.getElementById('startAt').value).toISOString() : null;
-  return {
-    scenario_id: scenario_id,
-    target_mode: target_mode,
-    target_zone: target_zone,
-    start_at: start_at,
-    dry_run: dryRun,
-    trigger_send_immediately: sendNow
-  };
-}
+    function fillScenarios() {
+      var el = document.getElementById('scenarioSelect');
+      el.innerHTML = '';
 
-async function simulateManual(){
-  var payload = buildManualPayload(true, false);
-  var res = await fetch('/api/manual-launch', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(payload)
-  });
-  var data = await res.json();
-  document.getElementById('result').textContent = JSON.stringify(data, null, 2);
-  renderManualPreview(data);
-}
+      scenarios.forEach(function(sc) {
+        var opt = document.createElement('option');
+        opt.value = sc.id;
+        opt.textContent = sc.label + ' (' + sc.code + ')';
+        el.appendChild(opt);
+      });
 
-async function launchManual(sendNow){
-  var payload = buildManualPayload(false, sendNow);
-  var res = await fetch('/api/manual-launch', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(payload)
-  });
-  var data = await res.json();
-  document.getElementById('result').textContent = JSON.stringify(data, null, 2);
-  renderManualPreview(data);
-  await reloadJobsAndEmails();
-}
+      updateScenarioInfo();
+      el.addEventListener('change', updateScenarioInfo);
+    }
 
-function renderManualPreview(data){
-  var box = document.getElementById('manualPreview');
-  if (!data || !Array.isArray(data.preview)) {
-    box.textContent = 'Aucune prévisualisation disponible.';
-    return;
-  }
-  if (!data.preview.length) {
-    box.textContent = 'Aucun message ne serait programmé pour la cible choisie.';
-    return;
-  }
-  var lines = [];
-  lines.push('Clients concernés : ' + (data.clients_concernes || 0));
-  lines.push('Messages programmés : ' + (data.messages_programmes || 0));
-  lines.push('');
-  data.preview.forEach(function(item, idx){
-    lines.push('Message ' + (idx + 1));
-    lines.push('Client : ' + (item.client_email || item.client_id));
-    lines.push('Étape : ' + item.scenario_step_id);
-    lines.push('Date prévue : ' + item.planned_send_at);
-    lines.push('Objet : ' + item.subject_rendered);
-    lines.push('------------------------------');
-  });
-  box.textContent = lines.join('
-');
-}
+    async function updateScenarioInfo() {
+      var id = Number(document.getElementById('scenarioSelect').value);
+      var sc = scenarios.find(function(x) { return x.id === id; });
+      if (!sc) return;
 
-async function reloadJobsAndEmails(){
-  await reloadJobs();
-  await reloadEmails();
-}
+      var steps = await fetch('/api/scenarios/' + id + '/steps').then(function(r) { return r.json(); });
 
-function computeKpis(){
-  var total = jobsData.length;
-  var ready = jobsData.filter(function(x){ return x.status === 'ready'; }).length;
-  var sent = jobsData.filter(function(x){ return x.status === 'sent'; }).length;
-  document.getElementById('kpiJobs').textContent = String(total);
-  document.getElementById('kpiReady').textContent = String(ready);
-  document.getElementById('kpiSent').textContent = String(sent);
-  document.getElementById('kpiEmails').textContent = String(emailsData.length);
-}
+      var lines = [];
+      lines.push('Scénario : ' + sc.label);
+      lines.push('Mode : ' + sc.aggregation_mode);
+      lines.push('Priorité : ' + sc.priority);
+      lines.push('');
+      lines.push('Étapes :');
 
-async function reloadJobs(){
-  var rows = await fetch('/api/jobs').then(function(r){ return r.json(); });
-  jobsData = Array.isArray(rows) ? rows : [];
-  renderJobsTable();
-  computeKpis();
-}
+      if (Array.isArray(steps)) {
+        steps.forEach(function(s) {
+          var delay = Number((s.logic_json && s.logic_json.delay_hours_after_previous) || 0);
+          lines.push('- ' + s.code + ' | ordre ' + s.step_order + ' | délai après précédent : ' + delay + 'h');
+        });
+      }
 
-function renderJobsTable(){
-  var filter = (document.getElementById('jobsFilter').value || '').toLowerCase();
-  var body = document.getElementById('jobsBody');
-  body.innerHTML = '';
-  jobsData.filter(function(r){
-    if (!filter) return true;
-    var txt = [r.id, r.client_id, r.scenario_id, r.scenario_step_id, r.planned_send_at, r.subject_rendered, r.status].join(' ').toLowerCase();
-    return txt.indexOf(filter) !== -1;
-  }).forEach(function(r){
-    var tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + r.id + '</td>' +
-      '<td>' + r.client_id + '</td>' +
-      '<td>' + r.scenario_id + '</td>' +
-      '<td>' + r.scenario_step_id + '</td>' +
-      '<td>' + (r.planned_send_at || '') + '</td>' +
-      '<td>' + (r.subject_rendered || '') + '</td>' +
-      '<td><span class="pill">' + r.status + '</span></td>';
-    body.appendChild(tr);
-  });
-}
+      document.getElementById('scenarioInfo').textContent = lines.join('\\n');
+    }
 
-async function reloadEmails(){
-  var rows = await fetch('/api/outbound-emails').then(function(r){ return r.json(); });
-  emailsData = Array.isArray(rows) ? rows : [];
-  var body = document.getElementById('emailsBody');
-  body.innerHTML = '';
-  emailsData.forEach(function(r){
-    var tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + r.id + '</td>' +
-      '<td>' + r.client_id + '</td>' +
-      '<td>' + (r.send_date || '') + '</td>' +
-      '<td>' + (r.subject_rendered || '') + '</td>' +
-      '<td><span class="pill">' + r.status + '</span></td>';
-    body.appendChild(tr);
-  });
-  computeKpis();
-}
+    function toggleTargetInputs() {
+      var mode = document.getElementById('targetMode').value;
+      document.getElementById('targetZone').style.display = mode === 'zone' ? 'block' : 'none';
+    }
 
-async function processDue(){
-  var data = await fetch('/api/process-due', { method:'POST' }).then(function(r){ return r.json(); });
-  document.getElementById('result').textContent = JSON.stringify(data, null, 2);
-  await reloadJobsAndEmails();
-}
+    async function loadClientSummary() {
+      var data = await fetch('/api/clients/summary').then(function(r) { return r.json(); });
+      var lines = ['Clients actifs : ' + data.total_clients];
+      var zones = data.zones || {};
 
-boot();
-</script>
+      Object.keys(zones).sort().forEach(function(z) {
+        lines.push('Zone ' + z + ' : ' + zones[z] + ' client(s)');
+      });
+
+      document.getElementById('clientSummary').textContent = lines.join('\\n');
+    }
+
+    function buildManualPayload(dryRun, sendNow) {
+      var scenario_id = Number(document.getElementById('scenarioSelect').value);
+      var target_mode = document.getElementById('targetMode').value;
+      var target_zone = document.getElementById('targetZone').value.trim();
+      var start_at = document.getElementById('startAt').value
+        ? new Date(document.getElementById('startAt').value).toISOString()
+        : null;
+
+      return {
+        scenario_id: scenario_id,
+        target_mode: target_mode,
+        target_zone: target_zone,
+        start_at: start_at,
+        dry_run: dryRun,
+        trigger_send_immediately: sendNow
+      };
+    }
+
+    async function simulateManual() {
+      var payload = buildManualPayload(true, false);
+
+      var res = await fetch('/api/manual-launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      var data = await res.json();
+      document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+      renderManualPreview(data);
+    }
+
+    async function launchManual(sendNow) {
+      var payload = buildManualPayload(false, sendNow);
+
+      var res = await fetch('/api/manual-launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      var data = await res.json();
+      document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+      renderManualPreview(data);
+      await reloadJobsAndEmails();
+    }
+
+    function renderManualPreview(data) {
+      var box = document.getElementById('manualPreview');
+
+      if (!data || !Array.isArray(data.preview)) {
+        box.textContent = 'Aucune prévisualisation disponible.';
+        return;
+      }
+
+      if (!data.preview.length) {
+        box.textContent = 'Aucun message ne serait programmé pour la cible choisie.';
+        return;
+      }
+
+      var lines = [];
+      lines.push('Clients concernés : ' + (data.clients_concernes || 0));
+      lines.push('Messages programmés : ' + (data.messages_programmes || 0));
+      lines.push('');
+
+      data.preview.forEach(function(item, idx) {
+        lines.push('Message ' + (idx + 1));
+        lines.push('Client : ' + (item.client_email || item.client_id));
+        lines.push('Étape : ' + item.scenario_step_id);
+        lines.push('Date prévue : ' + item.planned_send_at);
+        lines.push('Objet : ' + item.subject_rendered);
+        lines.push('------------------------------');
+      });
+
+      box.textContent = lines.join('\\n');
+    }
+
+    async function reloadJobsAndEmails() {
+      await reloadJobs();
+      await reloadEmails();
+    }
+
+    function computeKpis() {
+      var total = jobsData.length;
+      var ready = jobsData.filter(function(x) { return x.status === 'ready'; }).length;
+      var sent = jobsData.filter(function(x) { return x.status === 'sent'; }).length;
+
+      document.getElementById('kpiJobs').textContent = String(total);
+      document.getElementById('kpiReady').textContent = String(ready);
+      document.getElementById('kpiSent').textContent = String(sent);
+      document.getElementById('kpiEmails').textContent = String(emailsData.length);
+    }
+
+    async function reloadJobs() {
+      var rows = await fetch('/api/jobs').then(function(r) { return r.json(); });
+      jobsData = Array.isArray(rows) ? rows : [];
+      renderJobsTable();
+      computeKpis();
+    }
+
+    function renderJobsTable() {
+      var filter = (document.getElementById('jobsFilter').value || '').toLowerCase();
+      var body = document.getElementById('jobsBody');
+      body.innerHTML = '';
+
+      jobsData
+        .filter(function(r) {
+          if (!filter) return true;
+          var txt = [
+            r.id,
+            r.client_id,
+            r.scenario_id,
+            r.scenario_step_id,
+            r.planned_send_at,
+            r.subject_rendered,
+            r.status
+          ].join(' ').toLowerCase();
+          return txt.indexOf(filter) !== -1;
+        })
+        .forEach(function(r) {
+          var tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td>' + r.id + '</td>' +
+            '<td>' + r.client_id + '</td>' +
+            '<td>' + r.scenario_id + '</td>' +
+            '<td>' + r.scenario_step_id + '</td>' +
+            '<td>' + (r.planned_send_at || '') + '</td>' +
+            '<td>' + (r.subject_rendered || '') + '</td>' +
+            '<td><span class="pill">' + r.status + '</span></td>';
+          body.appendChild(tr);
+        });
+    }
+
+    async function reloadEmails() {
+      var rows = await fetch('/api/outbound-emails').then(function(r) { return r.json(); });
+      emailsData = Array.isArray(rows) ? rows : [];
+      var body = document.getElementById('emailsBody');
+      body.innerHTML = '';
+
+      emailsData.forEach(function(r) {
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + r.id + '</td>' +
+          '<td>' + r.client_id + '</td>' +
+          '<td>' + (r.send_date || '') + '</td>' +
+          '<td>' + (r.subject_rendered || '') + '</td>' +
+          '<td><span class="pill">' + r.status + '</span></td>';
+        body.appendChild(tr);
+      });
+
+      computeKpis();
+    }
+
+    async function processDue() {
+      var data = await fetch('/api/process-due', { method: 'POST' }).then(function(r) { return r.json(); });
+      document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+      await reloadJobsAndEmails();
+    }
+
+    boot();
+  </script>
 </body>
 </html>`;
 }
