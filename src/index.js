@@ -12,38 +12,16 @@ export default {
       }
 
       if (url.pathname === "/api/health" && request.method === "GET") {
-        return withCors(json({ ok: true, mode: "manual-scenario-v2" }));
+        return withCors(json({ ok: true, mode: "manual-scenario-option1" }));
       }
 
-      if (url.pathname === "/api/events/manual" && request.method === "GET") {
-        const rows = await supabaseSelect(
-          env,
-          "events",
-          "id,trigger_type_id,zone_cible,date_evenement,occurs_at,predicted_start_at,predicted_end_at,payload,statut,dedupe_key",
-          {
-            statut: "eq.open",
-            order: "id.desc",
-            limit: 100,
-          }
-        );
-
-        const triggerTypes = await supabaseSelect(
-          env,
-          "trigger_types",
-          "id,code,label",
-          { order: "id.asc" }
-        );
-
-        const typeMap = new Map(triggerTypes.map((t) => [t.id, t]));
-
-        return withCors(
-          json(
-            rows.map((r) => ({
-              ...r,
-              trigger_type: typeMap.get(r.trigger_type_id) || null,
-            }))
-          )
-        );
+      if (url.pathname === "/api/debug/env" && request.method === "GET") {
+        return withCors(json({
+          has_SUPABASE_URL: !!env.SUPABASE_URL,
+          has_SUPABASE_SERVICE_ROLE_KEY: !!env.SUPABASE_SERVICE_ROLE_KEY,
+          has_RESEND_API_KEY: !!env.RESEND_API_KEY,
+          has_MAIL_FROM: !!env.MAIL_FROM,
+        }));
       }
 
       if (url.pathname === "/api/scenarios" && request.method === "GET") {
@@ -51,19 +29,12 @@ export default {
           env,
           "scenarios",
           "id,code,label,trigger_type_id,aggregation_mode,priority,active",
-          {
-            active: "eq.true",
-            order: "priority.desc",
-          }
+          { active: "eq.true", order: "priority.desc" }
         );
         return withCors(json(scenarios));
       }
 
-      if (
-        url.pathname.startsWith("/api/scenarios/") &&
-        url.pathname.endsWith("/steps") &&
-        request.method === "GET"
-      ) {
+      if (url.pathname.startsWith("/api/scenarios/") && url.pathname.endsWith("/steps") && request.method === "GET") {
         const scenarioId = Number(url.pathname.split("/")[3]);
         const steps = await supabaseSelect(
           env,
@@ -78,10 +49,19 @@ export default {
         return withCors(json(steps));
       }
 
-      if (url.pathname === "/api/manual-launch" && request.method === "POST") {
-        const body = await request.json();
-        const result = await launchScenarioForEvent(env, body);
-        return withCors(json(result));
+      if (url.pathname === "/api/clients/summary" && request.method === "GET") {
+        const clients = await supabaseSelect(
+          env,
+          "clients",
+          "id,email,zone_geo,active,siret",
+          { active: "eq.true", order: "id.asc", limit: 500 }
+        );
+        const zones = {};
+        for (const c of clients) {
+          const z = c.zone_geo || "(vide)";
+          zones[z] = (zones[z] || 0) + 1;
+        }
+        return withCors(json({ total_clients: clients.length, zones }));
       }
 
       if (url.pathname === "/api/jobs" && request.method === "GET") {
@@ -89,12 +69,25 @@ export default {
           env,
           "client_message_items",
           "id,client_id,event_id,scenario_id,scenario_step_id,planned_send_at,priority,subject_rendered,status,created_at,sent_at",
-          {
-            order: "planned_send_at.asc",
-            limit: 200,
-          }
+          { order: "planned_send_at.asc", limit: 300 }
         );
         return withCors(json(jobs));
+      }
+
+      if (url.pathname === "/api/outbound-emails" && request.method === "GET") {
+        const rows = await supabaseSelect(
+          env,
+          "outbound_emails",
+          "id,client_id,send_date,planned_send_at,subject_rendered,status,created_at,sent_at",
+          { order: "id.desc", limit: 200 }
+        );
+        return withCors(json(rows));
+      }
+
+      if (url.pathname === "/api/manual-launch" && request.method === "POST") {
+        const body = await request.json();
+        const result = await launchManualScenario(env, body);
+        return withCors(json(result));
       }
 
       if (url.pathname === "/api/process-due" && request.method === "POST") {
@@ -104,9 +97,7 @@ export default {
 
       return withCors(json({ error: "Route introuvable" }, 404));
     } catch (error) {
-      return withCors(
-        json({ error: error.message || "Erreur interne" }, 500)
-      );
+      return withCors(json({ error: error.message || "Erreur interne" }, 500));
     }
   },
 
@@ -115,29 +106,24 @@ export default {
   },
 };
 
-async function launchScenarioForEvent(env, payload) {
-  const {
-    event_id,
-    scenario_id,
-    dry_run = false,
-    trigger_send_immediately = false,
-  } = payload || {};
+async function launchManualScenario(env, payload) {
+  const scenario_id = Number(payload && payload.scenario_id);
+  const dry_run = !!(payload && payload.dry_run);
+  const trigger_send_immediately = !!(payload && payload.trigger_send_immediately);
+  const target_mode = (payload && payload.target_mode) || "all"; // all | zone | client_ids
+  const target_zone = payload && payload.target_zone ? String(payload.target_zone).trim() : "";
+  const target_client_ids = Array.isArray(payload && payload.target_client_ids) ? payload.target_client_ids.map(Number).filter(Boolean) : [];
+  const start_at = payload && payload.start_at ? new Date(payload.start_at) : new Date();
 
-  if (!event_id || !scenario_id) {
-    throw new Error("event_id et scenario_id sont obligatoires");
-  }
-
-  const eventRows = await supabaseSelect(env, "events", "*", {
-    id: "eq." + event_id,
-    limit: 1,
-  });
-  const event = eventRows[0];
-  if (!event) throw new Error("Événement introuvable");
+  if (!scenario_id) throw new Error("scenario_id est obligatoire");
+  if (target_mode === "zone" && !target_zone) throw new Error("target_zone est obligatoire quand target_mode = zone");
+  if (target_mode === "client_ids" && !target_client_ids.length) throw new Error("target_client_ids est obligatoire quand target_mode = client_ids");
+  if (isNaN(start_at.getTime())) throw new Error("start_at invalide");
 
   const scenarioRows = await supabaseSelect(env, "scenarios", "*", {
     id: "eq." + scenario_id,
-    limit: 1,
     active: "eq.true",
+    limit: 1,
   });
   const scenario = scenarioRows[0];
   if (!scenario) throw new Error("Scénario introuvable ou inactif");
@@ -149,55 +135,70 @@ async function launchScenarioForEvent(env, payload) {
   });
   if (!steps.length) throw new Error("Aucune étape active sur ce scénario");
 
-  const clients = await supabaseSelect(
-    env,
-    "clients",
-    "id,email,zone_geo,preferences,active,siret",
-    {
-      active: "eq.true",
-      zone_geo: "eq." + event.zone_cible,
-    }
-  );
+  const clients = await loadManualTargetClients(env, target_mode, target_zone, target_client_ids);
+  if (!clients.length) throw new Error("Aucun client correspondant à la cible choisie");
 
-  const contentItems = await supabaseSelect(env, "content_items", "*", {
-    active: "eq.true",
-  });
+  const manualTriggerType = await getOrCreateManualTriggerType(env);
+  const technicalEventPayload = {
+    manual_launch: true,
+    source: "ui",
+    target_mode: target_mode,
+    target_zone: target_zone || null,
+    target_client_ids: target_client_ids,
+    launched_at: new Date().toISOString(),
+  };
 
+  const technicalEventPreview = {
+    trigger_type_id: manualTriggerType.id,
+    connecteur_id: null,
+    source_external_id: null,
+    dedupe_key: buildManualDedupeKey(scenario.id),
+    zone_cible: target_mode === "zone" ? target_zone : "MANUAL",
+    occurs_at: start_at.toISOString(),
+    predicted_start_at: start_at.toISOString(),
+    predicted_end_at: null,
+    date_evenement: start_at.toISOString().slice(0, 10),
+    severity: "info",
+    payload: technicalEventPayload,
+    statut: "open",
+    validated_by: "manual-ui",
+  };
+
+  const contentItems = await supabaseSelect(env, "content_items", "*", { active: "eq.true" });
   const contentVersions = await supabaseSelect(env, "content_versions", "*", {
     status: "eq.published",
     order: "version_no.desc",
   });
 
-  const itemByCode = new Map(contentItems.map((x) => [x.code, x]));
+  const itemByCode = new Map(contentItems.map(function (x) { return [x.code, x]; }));
   const latestVersionByContentId = new Map();
-
   for (const v of contentVersions) {
     if (!latestVersionByContentId.has(v.content_item_id)) {
       latestVersionByContentId.set(v.content_item_id, v);
     }
   }
 
-  const now = new Date();
   const preview = [];
   let created = 0;
+  let technicalEvent = null;
+
+  if (!dry_run) {
+    technicalEvent = await supabaseInsert(env, "events", technicalEventPreview);
+  }
 
   for (const client of clients) {
-    let previousPlannedAt = now;
+    let previousPlannedAt = new Date(start_at.getTime());
 
     for (let index = 0; index < steps.length; index++) {
       const step = steps[index];
       const logic = step.logic_json || {};
       const rules = Array.isArray(logic.contents) ? logic.contents : [];
-      const delayHoursAfterPrevious = Number(
-        logic.delay_hours_after_previous ?? (index === 0 ? 0 : 0)
-      );
-
-      const plannedAt = new Date(
-        previousPlannedAt.getTime() + delayHoursAfterPrevious * 3600 * 1000
-      );
+      const delayHoursAfterPrevious = Number(logic.delay_hours_after_previous ?? (index === 0 ? 0 : 0));
+      const plannedAt = new Date(previousPlannedAt.getTime() + delayHoursAfterPrevious * 3600 * 1000);
       previousPlannedAt = plannedAt;
 
-      const renderContext = buildRenderContext(event, client, step, scenario);
+      const fakeEvent = technicalEvent || technicalEventPreview;
+      const renderContext = buildRenderContext(fakeEvent, client, step, scenario);
       const renderedBlocks = [];
       const appliedVersions = [];
       let firstSubject = "";
@@ -205,7 +206,6 @@ async function launchScenarioForEvent(env, payload) {
       for (const rule of rules) {
         const contentItem = itemByCode.get(rule.content_code);
         if (!contentItem) continue;
-
         const version = latestVersionByContentId.get(contentItem.id);
         if (!version) continue;
 
@@ -214,7 +214,6 @@ async function launchScenarioForEvent(env, payload) {
 
         if (!firstSubject && subject) firstSubject = subject;
         if (body) renderedBlocks.push(body);
-
         appliedVersions.push({
           content_code: rule.content_code,
           content_version_id: version.id,
@@ -223,16 +222,12 @@ async function launchScenarioForEvent(env, payload) {
 
       if (!renderedBlocks.length) continue;
 
-      const subjectRendered =
-        firstSubject ||
-        "[Prévention routière] " + scenario.label + " - " + step.code;
-
+      const subjectRendered = firstSubject || ("[Prévention routière] " + scenario.label + " - " + step.code);
       const bodyRendered = renderedBlocks.join("\n\n");
 
       preview.push({
         client_id: client.id,
         client_email: client.email,
-        event_id: event.id,
         scenario_id: scenario.id,
         scenario_step_id: step.id,
         planned_send_at: plannedAt.toISOString(),
@@ -242,7 +237,7 @@ async function launchScenarioForEvent(env, payload) {
       if (!dry_run) {
         await supabaseInsert(env, "client_message_items", {
           client_id: client.id,
-          event_id: event.id,
+          event_id: technicalEvent.id,
           scenario_id: scenario.id,
           scenario_step_id: step.id,
           planned_send_at: plannedAt.toISOString(),
@@ -251,15 +246,7 @@ async function launchScenarioForEvent(env, payload) {
           body_rendered: bodyRendered,
           render_context: renderContext,
           applied_content_versions: appliedVersions,
-          cooldown_key:
-            "manual:" +
-            event.id +
-            ":" +
-            scenario.id +
-            ":" +
-            step.id +
-            ":" +
-            client.id,
+          cooldown_key: "manual:" + technicalEvent.id + ":" + scenario.id + ":" + step.id + ":" + client.id,
           status: "ready",
           sent_at: null,
         });
@@ -275,18 +262,72 @@ async function launchScenarioForEvent(env, payload) {
   return {
     ok: true,
     mode: dry_run ? "simulation" : "execution",
-    event_id,
-    scenario_id,
+    scenario_id: scenario.id,
+    scenario_label: scenario.label,
+    target_mode: target_mode,
+    target_zone: target_zone || null,
+    target_client_ids: target_client_ids,
     clients_concernes: clients.length,
     messages_programmes: dry_run ? preview.length : created,
-    send_immediately: !!trigger_send_immediately,
-    preview,
+    send_immediately: trigger_send_immediately,
+    technical_event_id: technicalEvent ? technicalEvent.id : null,
+    preview: preview,
   };
+}
+
+async function loadManualTargetClients(env, target_mode, target_zone, target_client_ids) {
+  if (target_mode === "all") {
+    return await supabaseSelect(env, "clients", "id,email,zone_geo,preferences,active,siret", {
+      active: "eq.true",
+      order: "id.asc",
+      limit: 1000,
+    });
+  }
+
+  if (target_mode === "zone") {
+    return await supabaseSelect(env, "clients", "id,email,zone_geo,preferences,active,siret", {
+      active: "eq.true",
+      zone_geo: "eq." + target_zone,
+      order: "id.asc",
+      limit: 1000,
+    });
+  }
+
+  if (target_mode === "client_ids") {
+    const all = await supabaseSelect(env, "clients", "id,email,zone_geo,preferences,active,siret", {
+      active: "eq.true",
+      order: "id.asc",
+      limit: 1000,
+    });
+    const wanted = new Set(target_client_ids);
+    return all.filter(function (c) { return wanted.has(c.id); });
+  }
+
+  throw new Error("target_mode invalide");
+}
+
+async function getOrCreateManualTriggerType(env) {
+  const existing = await supabaseSelect(env, "trigger_types", "*", {
+    code: "eq.MANUAL_TRIGGER",
+    limit: 1,
+  });
+  if (existing.length) return existing[0];
+
+  return await supabaseInsert(env, "trigger_types", {
+    code: "MANUAL_TRIGGER",
+    label: "Déclenchement manuel",
+    source_kind: "manual_ui",
+    default_priority: 50,
+    is_active: true,
+  });
+}
+
+function buildManualDedupeKey(scenarioId) {
+  return "MANUAL_TRIGGER|scenario:" + scenarioId + "|" + new Date().toISOString();
 }
 
 async function processDueMessages(env) {
   const nowIso = new Date().toISOString();
-
   const dueItems = await supabaseSelect(
     env,
     "client_message_items",
@@ -303,14 +344,9 @@ async function processDueMessages(env) {
     return { ok: true, processed: 0, sent: 0 };
   }
 
-  const clients = await supabaseSelect(
-    env,
-    "clients",
-    "id,email,zone_geo,siret",
-    { active: "eq.true" }
-  );
+  const clients = await supabaseSelect(env, "clients", "id,email,zone_geo,siret", { active: "eq.true" });
+  const clientMap = new Map(clients.map(function (c) { return [c.id, c]; }));
 
-  const clientMap = new Map(clients.map((c) => [c.id, c]));
   let sent = 0;
 
   for (const item of dueItems) {
@@ -363,11 +399,7 @@ async function processDueMessages(env) {
     sent++;
   }
 
-  return {
-    ok: true,
-    processed: dueItems.length,
-    sent,
-  };
+  return { ok: true, processed: dueItems.length, sent: sent };
 }
 
 function buildRenderContext(event, client, step, scenario) {
@@ -390,9 +422,7 @@ function buildRenderContext(event, client, step, scenario) {
 function renderTemplate(template, context) {
   return String(template || "").replace(/\{([^}]+)\}/g, function (_, key) {
     const k = key.trim();
-    return context[k] !== undefined && context[k] !== null
-      ? String(context[k])
-      : "{" + k + "}";
+    return context[k] !== undefined && context[k] !== null ? String(context[k]) : "{" + k + "}";
   });
 }
 
@@ -420,8 +450,7 @@ async function sendEmail(env, payload) {
   });
 
   if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error("Erreur d’envoi email: " + text);
+    throw new Error("Erreur d’envoi email: " + (await resp.text()));
   }
 
   const data = await resp.json();
@@ -429,7 +458,9 @@ async function sendEmail(env, payload) {
 }
 
 async function supabaseSelect(env, table, select, query) {
-  const url = new URL(env.SUPABASE_URL + "/rest/v1/" + table);
+  ensureSupabaseEnv(env);
+  const baseUrl = String(env.SUPABASE_URL).trim().replace(/\/+$/, "");
+  const url = new URL(baseUrl + "/rest/v1/" + table);
   url.searchParams.set("select", select);
 
   const safeQuery = query || {};
@@ -441,19 +472,18 @@ async function supabaseSelect(env, table, select, query) {
     }
   }
 
-  const resp = await fetch(url.toString(), {
-    headers: supabaseHeaders(env),
-  });
-
+  const resp = await fetch(url.toString(), { headers: supabaseHeaders(env) });
   if (!resp.ok) {
     throw new Error("Erreur Supabase SELECT " + table + ": " + (await resp.text()));
   }
-
   return await resp.json();
 }
 
 async function supabaseInsert(env, table, payload) {
-  const resp = await fetch(env.SUPABASE_URL + "/rest/v1/" + table, {
+  ensureSupabaseEnv(env);
+  const baseUrl = String(env.SUPABASE_URL).trim().replace(/\/+$/, "");
+
+  const resp = await fetch(baseUrl + "/rest/v1/" + table, {
     method: "POST",
     headers: {
       ...supabaseHeaders(env),
@@ -466,31 +496,38 @@ async function supabaseInsert(env, table, payload) {
   if (!resp.ok) {
     throw new Error("Erreur Supabase INSERT " + table + ": " + (await resp.text()));
   }
-
   const rows = await resp.json();
   return rows[0];
 }
 
 async function supabasePatch(env, table, id, payload) {
-  const resp = await fetch(
-    env.SUPABASE_URL + "/rest/v1/" + table + "?id=eq." + id,
-    {
-      method: "PATCH",
-      headers: {
-        ...supabaseHeaders(env),
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify(payload),
-    }
-  );
+  ensureSupabaseEnv(env);
+  const baseUrl = String(env.SUPABASE_URL).trim().replace(/\/+$/, "");
+
+  const resp = await fetch(baseUrl + "/rest/v1/" + table + "?id=eq." + id, {
+    method: "PATCH",
+    headers: {
+      ...supabaseHeaders(env),
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(payload),
+  });
 
   if (!resp.ok) {
     throw new Error("Erreur Supabase PATCH " + table + ": " + (await resp.text()));
   }
-
   const rows = await resp.json();
   return rows[0];
+}
+
+function ensureSupabaseEnv(env) {
+  if (!env.SUPABASE_URL) {
+    throw new Error("SUPABASE_URL manquante dans les variables d’environnement Cloudflare");
+  }
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY manquante dans les variables d’environnement Cloudflare");
+  }
 }
 
 function supabaseHeaders(env) {
@@ -519,10 +556,7 @@ function withCors(response) {
   headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  return new Response(response.body, {
-    status: response.status,
-    headers,
-  });
+  return new Response(response.body, { status: response.status, headers: headers });
 }
 
 function renderAppHtml() {
@@ -539,188 +573,195 @@ function renderAppHtml() {
     '    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}' +
     '    .card{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:16px}' +
     '    h1,h2,h3{margin-top:0}.muted{color:#6b7280;font-size:13px}' +
-    '    select,button,input{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;margin-bottom:12px}' +
+    '    select,button,input,textarea{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;margin-bottom:12px;box-sizing:border-box}' +
     '    button{background:#111827;color:#fff;cursor:pointer}' +
     '    button.secondary{background:#e5e7eb;color:#111827}' +
     '    .result{white-space:pre-wrap;background:#0f172a;color:#e2e8f0;border-radius:12px;padding:12px;font-size:13px;min-height:140px}' +
     '    table{width:100%;border-collapse:collapse;font-size:13px}.table-wrap{overflow:auto}' +
     '    th,td{padding:8px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}' +
-    '    code{background:#f3f4f6;padding:2px 6px;border-radius:6px}' +
+    '    code{background:#f3f4f6;padding:2px 6px;border-radius:6px;color:#111827}' +
+    '    .tabs{display:flex;gap:10px;margin-bottom:16px}' +
+    '    .tab{background:#e5e7eb;color:#111827;border:none;padding:10px 14px;border-radius:10px;cursor:pointer;width:auto}' +
+    '    .tab.active{background:#111827;color:#fff}' +
+    '    .panel{display:none}.panel.active{display:block}' +
     '    @media (max-width: 900px){.grid{grid-template-columns:1fr}}' +
     '  </style>' +
     '</head>' +
     '<body>' +
     '  <header>' +
-    '    <h1>Pilotage manuel des scénarios</h1>' +
-    '    <div class="muted" style="color:#cbd5e1">Lancement manuel, simulation, programmation différée et exécution automatique des envois.</div>' +
+    '    <h1>Pilotage des envois</h1>' +
+    '    <div class="muted" style="color:#cbd5e1">Suivi automatique + lancement manuel d’un scénario sans demander un événement à l’utilisateur.</div>' +
     '  </header>' +
     '  <main>' +
-    '    <div class="grid">' +
-    '      <section class="card">' +
-    '        <h2>1. Choisir un événement</h2>' +
-    '        <select id="eventSelect"></select>' +
-    '        <div id="eventInfo" class="muted"></div>' +
-    '      </section>' +
-    '      <section class="card">' +
-    '        <h2>2. Choisir un scénario</h2>' +
-    '        <select id="scenarioSelect"></select>' +
-    '        <div id="scenarioInfo" class="muted"></div>' +
-    '      </section>' +
+    '    <div class="tabs">' +
+    '      <button class="tab active" id="tabAuto" onclick="showPanel(\'auto\')">Suivi automatique</button>' +
+    '      <button class="tab" id="tabManual" onclick="showPanel(\'manual\')">Lancement manuel</button>' +
     '    </div>' +
-    '    <section class="card" style="margin-top:16px;">' +
-    '      <h2>3. Déclencher</h2>' +
-    '      <button class="secondary" onclick="launch(true,false)">Simuler sans écrire en base</button>' +
-    '      <button onclick="launch(false,false)">Programmer les messages</button>' +
-    '      <button onclick="launch(false,true)">Programmer et envoyer tout ce qui est dû maintenant</button>' +
-    '      <div class="muted">Pour programmer un second message 24h plus tard, ajoutez dans le step 2 : <code>logic_json.delay_hours_after_previous = 24</code>.</div>' +
+    '    <section id="panelAuto" class="panel active">' +
+    '      <div class="card" style="margin-bottom:16px;">' +
+    '        <h2>Messages programmés</h2>' +
+    '        <div class="table-wrap">' +
+    '          <table>' +
+    '            <thead><tr><th>ID</th><th>Client</th><th>Scénario</th><th>Étape</th><th>Envoi prévu</th><th>Statut</th></tr></thead>' +
+    '            <tbody id="jobsBody"></tbody>' +
+    '          </table>' +
+    '        </div>' +
+    '        <button class="secondary" onclick="reloadJobs()">Rafraîchir les messages programmés</button>' +
+    '        <button class="secondary" onclick="processDue()">Traiter les envois dus maintenant</button>' +
+    '      </div>' +
+    '      <div class="card">' +
+    '        <h2>Emails générés</h2>' +
+    '        <div class="table-wrap">' +
+    '          <table>' +
+    '            <thead><tr><th>ID</th><th>Client</th><th>Date</th><th>Objet</th><th>Statut</th></tr></thead>' +
+    '            <tbody id="emailsBody"></tbody>' +
+    '          </table>' +
+    '        </div>' +
+    '        <button class="secondary" onclick="reloadEmails()">Rafraîchir les emails</button>' +
+    '      </div>' +
+    '    </section>' +
+    '    <section id="panelManual" class="panel">' +
+    '      <div class="grid">' +
+    '        <section class="card">' +
+    '          <h2>1. Choisir un scénario</h2>' +
+    '          <select id="scenarioSelect"></select>' +
+    '          <div id="scenarioInfo" class="muted"></div>' +
+    '        </section>' +
+    '        <section class="card">' +
+    '          <h2>2. Choisir la cible</h2>' +
+    '          <select id="targetMode">' +
+    '            <option value="all">Tous les clients actifs</option>' +
+    '            <option value="zone">Clients d’une zone</option>' +
+    '          </select>' +
+    '          <input id="targetZone" placeholder="Ex. 56" />' +
+    '          <div id="clientSummary" class="muted"></div>' +
+    '        </section>' +
+    '      </div>' +
+    '      <section class="card" style="margin-top:16px;">' +
+    '        <h2>3. Date de départ</h2>' +
+    '        <input id="startAt" type="datetime-local" />' +
+    '        <div class="muted">L’interface créera en interne un événement technique caché de type <code>MANUAL_TRIGGER</code>.</div>' +
+    '      </section>' +
+    '      <section class="card" style="margin-top:16px;">' +
+    '        <h2>4. Déclencher</h2>' +
+    '        <button class="secondary" onclick="launchManual(true,false)">Simuler sans écrire en base</button>' +
+    '        <button onclick="launchManual(false,false)">Programmer les messages</button>' +
+    '        <button onclick="launchManual(false,true)">Programmer et envoyer tout ce qui est dû maintenant</button>' +
+    '        <div class="muted">Pour programmer un second message 24h plus tard, ajoutez dans le step 2 : <code>logic_json.delay_hours_after_previous = 24</code>.</div>' +
+    '      </section>' +
     '    </section>' +
     '    <section class="card" style="margin-top:16px;">' +
     '      <h2>Résultat</h2>' +
     '      <div id="result" class="result">Aucune action exécutée.</div>' +
     '    </section>' +
-    '    <section class="card" style="margin-top:16px;">' +
-    '      <h2>Messages programmés</h2>' +
-    '      <div class="table-wrap">' +
-    '        <table>' +
-    '          <thead><tr><th>ID</th><th>Client</th><th>Scénario</th><th>Étape</th><th>Envoi prévu</th><th>Statut</th></tr></thead>' +
-    '          <tbody id="jobsBody"></tbody>' +
-    '        </table>' +
-    '      </div>' +
-    '      <button class="secondary" onclick="reloadJobs()">Rafraîchir les messages programmés</button>' +
-    '      <button class="secondary" onclick="processDue()">Traiter les envois dus maintenant</button>' +
-    '    </section>' +
     '  </main>' +
     '  <script>' +
-    '    var events = [];' +
     '    var scenarios = [];' +
-
-    '    async function boot() {'+
-  'try {'+
-    'var eventsResp = await fetch("/api/events/manual");'+
-    'var scenariosResp = await fetch("/api/scenarios");'+
-
-    'var eventsData = await eventsResp.json();'+
-    'var scenariosData = await scenariosResp.json();'+
-
-    'if (!eventsResp.ok) {'+
-     ' throw new Error("Erreur /api/events/manual : " + (eventsData.error || "erreur inconnue"));'+
-    '}'+
-
-    'if (!scenariosResp.ok) {'+
-   '   throw new Error("Erreur /api/scenarios : " + (scenariosData.error || "erreur inconnue"));'+
-  '  }'+
-
- '   if (!Array.isArray(eventsData)) {'+
-'      throw new Error("La route /api/events/manual ne renvoie pas un tableau.");'+
- '   }'+
-
-  '  if (!Array.isArray(scenariosData)) {'+
- '     throw new Error("La route /api/scenarios ne renvoie pas un tableau.");'+
-'    }'+
-
-'    events = eventsData;'+
-'    scenarios = scenariosData;'+
-
-'    fillEvents();'+
-'    fillScenarios();'+
-'    await reloadJobs();'+
-'  } catch (e) {'+
-'    document.getElementById("result").textContent ='+
-'      "Erreur au chargement :\\n\\n" + (e.message || String(e));'+
-'  }'+
-'}   ' +
-
-'function fillEvents() {'+
- ' var el = document.getElementById("eventSelect");'+
-  'el.innerHTML = "";'+
-
- ' if (!Array.isArray(events)) {'+
-'    document.getElementById("eventInfo").textContent = "Aucun événement exploitable reçu.";'+
- '   return;'+
-  '}'+
-
-  'events.forEach(function(ev) {'+
-   ' var opt = document.createElement("option");'+
-    'opt.value = ev.id;'+
-    'opt.textContent ='+
-     ' ((ev.trigger_type && (ev.trigger_type.label || ev.trigger_type.code)) || "Événement") +'+
-      '" — zone " + ev.zone_cible +'+
-      '" — " + ev.dedupe_key;'+
-    'el.appendChild(opt);'+
-  '});'+
-
-  'updateEventInfo();'+
-  'el.addEventListener("change", updateEventInfo);'+
-'}'+
-
-'function fillScenarios() {'+
- ' var el = document.getElementById("scenarioSelect");'+
-  'el.innerHTML = "";'+
-
-  'if (!Array.isArray(scenarios)) {'+
-   ' document.getElementById("scenarioInfo").textContent = "Aucun scénario exploitable reçu.";'+
-    'return;'+
-  '}'+
-
-  'scenarios.forEach(function(sc) {'+
-   ' var opt = document.createElement("option");'+
-    'opt.value = sc.id;'+
-    'opt.textContent = sc.label + " (" + sc.code + ")";'+
-    'el.appendChild(opt);'+
-  '});'+
-
-  'updateScenarioInfo();'+
-  'el.addEventListener("change", updateScenarioInfo);'+
-'}'+
-
-    '    function updateEventInfo() {' +
-    '      var id = Number(document.getElementById("eventSelect").value);' +
-    '      var ev = events.find(function(x){ return x.id === id; });' +
-    '      document.getElementById("eventInfo").textContent = ev ? JSON.stringify(ev.payload || {}, null, 2) : "";' +
+    '    function showPanel(name){' +
+    '      document.getElementById("panelAuto").className = "panel" + (name === "auto" ? " active" : "");' +
+    '      document.getElementById("panelManual").className = "panel" + (name === "manual" ? " active" : "");' +
+    '      document.getElementById("tabAuto").className = "tab" + (name === "auto" ? " active" : "");' +
+    '      document.getElementById("tabManual").className = "tab" + (name === "manual" ? " active" : "");' +
     '    }' +
-
-    '    async function updateScenarioInfo() {' +
+    '    async function boot(){' +
+    '      try {' +
+    '        var scenariosResp = await fetch("/api/scenarios");' +
+    '        var scenariosData = await scenariosResp.json();' +
+    '        if (!scenariosResp.ok) throw new Error("Erreur /api/scenarios : " + (scenariosData.error || "erreur inconnue"));' +
+    '        if (!Array.isArray(scenariosData)) throw new Error("/api/scenarios ne renvoie pas un tableau");' +
+    '        scenarios = scenariosData;' +
+    '        fillScenarios();' +
+    '        await reloadJobs();' +
+    '        await reloadEmails();' +
+    '        await loadClientSummary();' +
+    '        setDefaultStartAt();' +
+    '      } catch (e) {' +
+    '        document.getElementById("result").textContent = "Erreur au chargement :\n\n" + (e.message || String(e));' +
+    '      }' +
+    '    }' +
+    '    function setDefaultStartAt(){' +
+    '      var d = new Date();' +
+    '      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());' +
+    '      document.getElementById("startAt").value = d.toISOString().slice(0,16);' +
+    '    }' +
+    '    function fillScenarios(){' +
+    '      var el = document.getElementById("scenarioSelect");' +
+    '      el.innerHTML = "";' +
+    '      scenarios.forEach(function(sc){' +
+    '        var opt = document.createElement("option");' +
+    '        opt.value = sc.id;' +
+    '        opt.textContent = sc.label + " (" + sc.code + ")";' +
+    '        el.appendChild(opt);' +
+    '      });' +
+    '      updateScenarioInfo();' +
+    '      el.addEventListener("change", updateScenarioInfo);' +
+    '    }' +
+    '    async function updateScenarioInfo(){' +
     '      var id = Number(document.getElementById("scenarioSelect").value);' +
     '      var sc = scenarios.find(function(x){ return x.id === id; });' +
     '      if (!sc) return;' +
     '      var steps = await fetch("/api/scenarios/" + id + "/steps").then(function(r){ return r.json(); });' +
-    '      var lines = steps.map(function(s) {' +
+    '      var lines = Array.isArray(steps) ? steps.map(function(s){' +
     '        var delay = Number((s.logic_json && s.logic_json.delay_hours_after_previous) || 0);' +
     '        return s.code + " — ordre " + s.step_order + " — délai après précédent : " + delay + "h";' +
-    '      });' +
-    '      document.getElementById("scenarioInfo").textContent = sc.aggregation_mode + " — priorité " + sc.priority + "\\n" + lines.join("\\n");' +
+    '      }) : [];' +
+    '      document.getElementById("scenarioInfo").textContent = sc.aggregation_mode + " — priorité " + sc.priority + "\n" + lines.join("\n");' +
     '    }' +
-
-    '    async function launch(dry_run, trigger_send_immediately) {' +
-    '      var event_id = Number(document.getElementById("eventSelect").value);' +
+    '    async function loadClientSummary(){' +
+    '      var data = await fetch("/api/clients/summary").then(function(r){ return r.json(); });' +
+    '      var lines = ["Clients actifs : " + data.total_clients];' +
+    '      var zones = data.zones || {};' +
+    '      Object.keys(zones).sort().forEach(function(z){ lines.push("Zone " + z + " : " + zones[z] + " client(s)"); });' +
+    '      document.getElementById("clientSummary").textContent = lines.join("\n");' +
+    '    }' +
+    '    async function launchManual(dry_run, trigger_send_immediately){' +
     '      var scenario_id = Number(document.getElementById("scenarioSelect").value);' +
+    '      var target_mode = document.getElementById("targetMode").value;' +
+    '      var target_zone = document.getElementById("targetZone").value.trim();' +
+    '      var start_at = document.getElementById("startAt").value ? new Date(document.getElementById("startAt").value).toISOString() : null;' +
     '      var res = await fetch("/api/manual-launch", {' +
     '        method: "POST",' +
     '        headers: { "Content-Type": "application/json" },' +
-    '        body: JSON.stringify({ event_id: event_id, scenario_id: scenario_id, dry_run: dry_run, trigger_send_immediately: trigger_send_immediately })' +
+    '        body: JSON.stringify({' +
+    '          scenario_id: scenario_id,' +
+    '          target_mode: target_mode,' +
+    '          target_zone: target_zone,' +
+    '          start_at: start_at,' +
+    '          dry_run: dry_run,' +
+    '          trigger_send_immediately: trigger_send_immediately' +
+    '        })' +
     '      });' +
     '      var data = await res.json();' +
     '      document.getElementById("result").textContent = JSON.stringify(data, null, 2);' +
     '      await reloadJobs();' +
+    '      await reloadEmails();' +
     '    }' +
-
-    '    async function reloadJobs() {' +
+    '    async function reloadJobs(){' +
     '      var rows = await fetch("/api/jobs").then(function(r){ return r.json(); });' +
     '      var body = document.getElementById("jobsBody");' +
     '      body.innerHTML = "";' +
-    '      rows.forEach(function(r) {' +
+    '      rows.forEach(function(r){' +
     '        var tr = document.createElement("tr");' +
     '        tr.innerHTML = "<td>" + r.id + "</td><td>" + r.client_id + "</td><td>" + r.scenario_id + "</td><td>" + r.scenario_step_id + "</td><td>" + (r.planned_send_at || "") + "</td><td>" + r.status + "</td>";' +
     '        body.appendChild(tr);' +
     '      });' +
     '    }' +
-
-    '    async function processDue() {' +
+    '    async function reloadEmails(){' +
+    '      var rows = await fetch("/api/outbound-emails").then(function(r){ return r.json(); });' +
+    '      var body = document.getElementById("emailsBody");' +
+    '      body.innerHTML = "";' +
+    '      rows.forEach(function(r){' +
+    '        var tr = document.createElement("tr");' +
+    '        tr.innerHTML = "<td>" + r.id + "</td><td>" + r.client_id + "</td><td>" + (r.send_date || "") + "</td><td>" + (r.subject_rendered || "") + "</td><td>" + r.status + "</td>";' +
+    '        body.appendChild(tr);' +
+    '      });' +
+    '    }' +
+    '    async function processDue(){' +
     '      var data = await fetch("/api/process-due", { method: "POST" }).then(function(r){ return r.json(); });' +
     '      document.getElementById("result").textContent = JSON.stringify(data, null, 2);' +
     '      await reloadJobs();' +
+    '      await reloadEmails();' +
     '    }' +
-
     '    boot();' +
     '  </script>' +
     '</body>' +
