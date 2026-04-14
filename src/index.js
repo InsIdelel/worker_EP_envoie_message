@@ -20,7 +20,7 @@ export default {
           has_SUPABASE_URL: !!env.SUPABASE_URL,
           has_SUPABASE_SERVICE_ROLE_KEY: !!env.SUPABASE_SERVICE_ROLE_KEY,
           has_RESEND_API_KEY: !!env.RESEND_API_KEY,
-          has_MAIL_FROM: !!env.MAIL_FROM,
+          has_MAIL_FROM: !!env.MAIL_FROM
         }));
       }
 
@@ -43,7 +43,7 @@ export default {
           {
             scenario_id: "eq." + scenarioId,
             active: "eq.true",
-            order: "step_order.asc",
+            order: "step_order.asc"
           }
         );
         return withCors(json(steps));
@@ -54,7 +54,7 @@ export default {
           env,
           "clients",
           "id,email,zone_geo,active,siret",
-          { active: "eq.true", order: "id.asc", limit: 500 }
+          { active: "eq.true", order: "id.asc", limit: 1000 }
         );
         const zones = {};
         for (const c of clients) {
@@ -69,7 +69,7 @@ export default {
           env,
           "client_message_items",
           "id,client_id,event_id,scenario_id,scenario_step_id,planned_send_at,priority,subject_rendered,status,created_at,sent_at",
-          { order: "planned_send_at.asc", limit: 300 }
+          { order: "planned_send_at.asc", limit: 500 }
         );
         return withCors(json(jobs));
       }
@@ -79,7 +79,7 @@ export default {
           env,
           "outbound_emails",
           "id,client_id,send_date,planned_send_at,subject_rendered,status,created_at,sent_at",
-          { order: "id.desc", limit: 200 }
+          { order: "id.desc", limit: 300 }
         );
         return withCors(json(rows));
       }
@@ -103,49 +103,66 @@ export default {
 
   async scheduled(controller, env, ctx) {
     ctx.waitUntil(processDueMessages(env));
-  },
+  }
 };
 
 async function launchManualScenario(env, payload) {
   const scenario_id = Number(payload && payload.scenario_id);
   const dry_run = !!(payload && payload.dry_run);
   const trigger_send_immediately = !!(payload && payload.trigger_send_immediately);
-  const target_mode = (payload && payload.target_mode) || "all"; // all | zone | client_ids
+  const target_mode = (payload && payload.target_mode) || "all";
   const target_zone = payload && payload.target_zone ? String(payload.target_zone).trim() : "";
-  const target_client_ids = Array.isArray(payload && payload.target_client_ids) ? payload.target_client_ids.map(Number).filter(Boolean) : [];
+  const target_client_ids = Array.isArray(payload && payload.target_client_ids)
+    ? payload.target_client_ids.map(Number).filter(Boolean)
+    : [];
   const start_at = payload && payload.start_at ? new Date(payload.start_at) : new Date();
 
-  if (!scenario_id) throw new Error("scenario_id est obligatoire");
-  if (target_mode === "zone" && !target_zone) throw new Error("target_zone est obligatoire quand target_mode = zone");
-  if (target_mode === "client_ids" && !target_client_ids.length) throw new Error("target_client_ids est obligatoire quand target_mode = client_ids");
-  if (isNaN(start_at.getTime())) throw new Error("start_at invalide");
+  if (!scenario_id) {
+    throw new Error("scenario_id est obligatoire");
+  }
+  if (target_mode === "zone" && !target_zone) {
+    throw new Error("target_zone est obligatoire quand target_mode = zone");
+  }
+  if (target_mode === "client_ids" && !target_client_ids.length) {
+    throw new Error("target_client_ids est obligatoire quand target_mode = client_ids");
+  }
+  if (isNaN(start_at.getTime())) {
+    throw new Error("start_at invalide");
+  }
 
   const scenarioRows = await supabaseSelect(env, "scenarios", "*", {
     id: "eq." + scenario_id,
     active: "eq.true",
-    limit: 1,
+    limit: 1
   });
   const scenario = scenarioRows[0];
-  if (!scenario) throw new Error("Scénario introuvable ou inactif");
+  if (!scenario) {
+    throw new Error("Scénario introuvable ou inactif");
+  }
 
   const steps = await supabaseSelect(env, "scenario_steps", "*", {
     scenario_id: "eq." + scenario.id,
     active: "eq.true",
-    order: "step_order.asc",
+    order: "step_order.asc"
   });
-  if (!steps.length) throw new Error("Aucune étape active sur ce scénario");
+  if (!steps.length) {
+    throw new Error("Aucune étape active sur ce scénario");
+  }
 
   const clients = await loadManualTargetClients(env, target_mode, target_zone, target_client_ids);
-  if (!clients.length) throw new Error("Aucun client correspondant à la cible choisie");
+  if (!clients.length) {
+    throw new Error("Aucun client correspondant à la cible choisie");
+  }
 
   const manualTriggerType = await getOrCreateManualTriggerType(env);
+
   const technicalEventPayload = {
     manual_launch: true,
     source: "ui",
     target_mode: target_mode,
     target_zone: target_zone || null,
     target_client_ids: target_client_ids,
-    launched_at: new Date().toISOString(),
+    launched_at: new Date().toISOString()
   };
 
   const technicalEventPreview = {
@@ -161,16 +178,22 @@ async function launchManualScenario(env, payload) {
     severity: "info",
     payload: technicalEventPayload,
     statut: "open",
-    validated_by: "manual-ui",
+    validated_by: "manual-ui"
   };
 
-  const contentItems = await supabaseSelect(env, "content_items", "*", { active: "eq.true" });
-  const contentVersions = await supabaseSelect(env, "content_versions", "*", {
-    status: "eq.published",
-    order: "version_no.desc",
+  const contentItems = await supabaseSelect(env, "content_items", "*", {
+    active: "eq.true"
   });
 
-  const itemByCode = new Map(contentItems.map(function (x) { return [x.code, x]; }));
+  const contentVersions = await supabaseSelect(env, "content_versions", "*", {
+    status: "eq.published",
+    order: "version_no.desc"
+  });
+
+  const itemByCode = new Map(contentItems.map(function (x) {
+    return [x.code, x];
+  }));
+
   const latestVersionByContentId = new Map();
   for (const v of contentVersions) {
     if (!latestVersionByContentId.has(v.content_item_id)) {
@@ -187,18 +210,15 @@ async function launchManualScenario(env, payload) {
   }
 
   for (const client of clients) {
-    let previousPlannedAt = new Date(start_at.getTime());
-
     for (let index = 0; index < steps.length; index++) {
       const step = steps[index];
       const logic = step.logic_json || {};
       const rules = Array.isArray(logic.contents) ? logic.contents : [];
-      const delayHoursAfterPrevious = Number(logic.delay_hours_after_previous ?? (index === 0 ? 0 : 0));
-      const plannedAt = new Date(previousPlannedAt.getTime() + delayHoursAfterPrevious * 3600 * 1000);
-      previousPlannedAt = plannedAt;
-
       const fakeEvent = technicalEvent || technicalEventPreview;
+
+      const plannedAt = computeStepPlannedAt(fakeEvent, step);
       const renderContext = buildRenderContext(fakeEvent, client, step, scenario);
+
       const renderedBlocks = [];
       const appliedVersions = [];
       let firstSubject = "";
@@ -206,21 +226,29 @@ async function launchManualScenario(env, payload) {
       for (const rule of rules) {
         const contentItem = itemByCode.get(rule.content_code);
         if (!contentItem) continue;
+
         const version = latestVersionByContentId.get(contentItem.id);
         if (!version) continue;
 
         const subject = renderTemplate(version.sujet_template || "", renderContext);
         const body = renderTemplate(version.corps_template || "", renderContext);
 
-        if (!firstSubject && subject) firstSubject = subject;
-        if (body) renderedBlocks.push(body);
+        if (!firstSubject && subject) {
+          firstSubject = subject;
+        }
+        if (body) {
+          renderedBlocks.push(body);
+        }
+
         appliedVersions.push({
           content_code: rule.content_code,
-          content_version_id: version.id,
+          content_version_id: version.id
         });
       }
 
-      if (!renderedBlocks.length) continue;
+      if (!renderedBlocks.length) {
+        continue;
+      }
 
       const subjectRendered = firstSubject || ("[Prévention routière] " + scenario.label + " - " + step.code);
       const bodyRendered = renderedBlocks.join("\n\n");
@@ -230,8 +258,12 @@ async function launchManualScenario(env, payload) {
         client_email: client.email,
         scenario_id: scenario.id,
         scenario_step_id: step.id,
+        step_code: step.code,
+        step_window_ref: step.window_ref,
+        step_window_min_hours: step.window_min_hours,
+        step_window_max_hours: step.window_max_hours,
         planned_send_at: plannedAt.toISOString(),
-        subject_rendered: subjectRendered,
+        subject_rendered: subjectRendered
       });
 
       if (!dry_run) {
@@ -248,7 +280,7 @@ async function launchManualScenario(env, payload) {
           applied_content_versions: appliedVersions,
           cooldown_key: "manual:" + technicalEvent.id + ":" + scenario.id + ":" + step.id + ":" + client.id,
           status: "ready",
-          sent_at: null,
+          sent_at: null
         });
         created++;
       }
@@ -267,12 +299,41 @@ async function launchManualScenario(env, payload) {
     target_mode: target_mode,
     target_zone: target_zone || null,
     target_client_ids: target_client_ids,
+    start_at: start_at.toISOString(),
     clients_concernes: clients.length,
     messages_programmes: dry_run ? preview.length : created,
     send_immediately: trigger_send_immediately,
     technical_event_id: technicalEvent ? technicalEvent.id : null,
-    preview: preview,
+    preview: preview
   };
+}
+
+function resolveReferenceDate(event, step) {
+  const ref = step.window_ref;
+
+  if (ref === "occurs_at" && event.occurs_at) {
+    return new Date(event.occurs_at);
+  }
+
+  if (ref === "predicted_start_at" && event.predicted_start_at) {
+    return new Date(event.predicted_start_at);
+  }
+
+  if (ref === "predicted_end_at" && event.predicted_end_at) {
+    return new Date(event.predicted_end_at);
+  }
+
+  if (ref === "date_evenement" && event.date_evenement) {
+    return new Date(event.date_evenement + "T08:00:00");
+  }
+
+  throw new Error("Impossible de calculer la référence temporelle pour l’étape " + step.code);
+}
+
+function computeStepPlannedAt(event, step) {
+  const referenceDate = resolveReferenceDate(event, step);
+  const maxHours = Number(step.window_max_hours || 0);
+  return new Date(referenceDate.getTime() - maxHours * 3600 * 1000);
 }
 
 async function loadManualTargetClients(env, target_mode, target_zone, target_client_ids) {
@@ -280,7 +341,7 @@ async function loadManualTargetClients(env, target_mode, target_zone, target_cli
     return await supabaseSelect(env, "clients", "id,email,zone_geo,preferences,active,siret", {
       active: "eq.true",
       order: "id.asc",
-      limit: 1000,
+      limit: 1000
     });
   }
 
@@ -289,7 +350,7 @@ async function loadManualTargetClients(env, target_mode, target_zone, target_cli
       active: "eq.true",
       zone_geo: "eq." + target_zone,
       order: "id.asc",
-      limit: 1000,
+      limit: 1000
     });
   }
 
@@ -297,10 +358,12 @@ async function loadManualTargetClients(env, target_mode, target_zone, target_cli
     const all = await supabaseSelect(env, "clients", "id,email,zone_geo,preferences,active,siret", {
       active: "eq.true",
       order: "id.asc",
-      limit: 1000,
+      limit: 1000
     });
     const wanted = new Set(target_client_ids);
-    return all.filter(function (c) { return wanted.has(c.id); });
+    return all.filter(function (c) {
+      return wanted.has(c.id);
+    });
   }
 
   throw new Error("target_mode invalide");
@@ -309,16 +372,19 @@ async function loadManualTargetClients(env, target_mode, target_zone, target_cli
 async function getOrCreateManualTriggerType(env) {
   const existing = await supabaseSelect(env, "trigger_types", "*", {
     code: "eq.MANUAL_TRIGGER",
-    limit: 1,
+    limit: 1
   });
-  if (existing.length) return existing[0];
+
+  if (existing.length) {
+    return existing[0];
+  }
 
   return await supabaseInsert(env, "trigger_types", {
     code: "MANUAL_TRIGGER",
     label: "Déclenchement manuel",
     source_kind: "manual_ui",
     default_priority: 50,
-    is_active: true,
+    is_active: true
   });
 }
 
@@ -328,6 +394,7 @@ function buildManualDedupeKey(scenarioId) {
 
 async function processDueMessages(env) {
   const nowIso = new Date().toISOString();
+
   const dueItems = await supabaseSelect(
     env,
     "client_message_items",
@@ -336,7 +403,7 @@ async function processDueMessages(env) {
       status: "eq.ready",
       planned_send_at: "lte." + nowIso,
       order: "planned_send_at.asc",
-      limit: 200,
+      limit: 200
     }
   );
 
@@ -344,8 +411,13 @@ async function processDueMessages(env) {
     return { ok: true, processed: 0, sent: 0 };
   }
 
-  const clients = await supabaseSelect(env, "clients", "id,email,zone_geo,siret", { active: "eq.true" });
-  const clientMap = new Map(clients.map(function (c) { return [c.id, c]; }));
+  const clients = await supabaseSelect(env, "clients", "id,email,zone_geo,siret", {
+    active: "eq.true"
+  });
+
+  const clientMap = new Map(clients.map(function (c) {
+    return [c.id, c];
+  }));
 
   let sent = 0;
 
@@ -361,30 +433,30 @@ async function processDueMessages(env) {
       body_rendered: item.body_rendered,
       status: "queued",
       presta_id: null,
-      sent_at: null,
+      sent_at: null
     });
 
     await supabaseInsert(env, "outbound_email_items", {
       outbound_email_id: outbound.id,
       client_message_item_id: item.id,
-      display_order: 1,
+      display_order: 1
     });
 
     const sendResult = await sendEmail(env, {
       to: client.email,
       subject: item.subject_rendered,
-      html: item.body_rendered.replace(/\n/g, "<br>"),
+      html: item.body_rendered.replace(/\n/g, "<br>")
     });
 
     await supabasePatch(env, "outbound_emails", outbound.id, {
       status: "sent",
       presta_id: sendResult.provider_id || "mail-provider",
-      sent_at: new Date().toISOString(),
+      sent_at: new Date().toISOString()
     });
 
     await supabasePatch(env, "client_message_items", item.id, {
       status: "sent",
-      sent_at: new Date().toISOString(),
+      sent_at: new Date().toISOString()
     });
 
     await supabaseInsert(env, "envois_log", {
@@ -393,7 +465,7 @@ async function processDueMessages(env) {
       event_id: item.event_id,
       sent_at: new Date().toISOString(),
       presta_id: sendResult.provider_id || "mail-provider",
-      message: item.body_rendered,
+      message: item.body_rendered
     });
 
     sent++;
@@ -415,7 +487,7 @@ function buildRenderContext(event, client, step, scenario) {
     client_siret: client.siret,
     scenario_code: scenario.code,
     scenario_label: scenario.label,
-    step_code: step.code,
+    step_code: step.code
   };
 }
 
@@ -439,14 +511,14 @@ async function sendEmail(env, payload) {
     method: "POST",
     headers: {
       Authorization: "Bearer " + env.RESEND_API_KEY,
-      "Content-Type": "application/json",
+      "Content-Type": "application/json"
     },
     body: JSON.stringify({
       from: env.MAIL_FROM,
       to: [to],
       subject: subject,
-      html: html,
-    }),
+      html: html
+    })
   });
 
   if (!resp.ok) {
@@ -488,9 +560,9 @@ async function supabaseInsert(env, table, payload) {
     headers: {
       ...supabaseHeaders(env),
       "Content-Type": "application/json",
-      Prefer: "return=representation",
+      Prefer: "return=representation"
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(payload)
   });
 
   if (!resp.ok) {
@@ -509,9 +581,9 @@ async function supabasePatch(env, table, id, payload) {
     headers: {
       ...supabaseHeaders(env),
       "Content-Type": "application/json",
-      Prefer: "return=representation",
+      Prefer: "return=representation"
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(payload)
   });
 
   if (!resp.ok) {
@@ -533,21 +605,21 @@ function ensureSupabaseEnv(env) {
 function supabaseHeaders(env) {
   return {
     apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-    Authorization: "Bearer " + env.SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: "Bearer " + env.SUPABASE_SERVICE_ROLE_KEY
   };
 }
 
 function json(data, status) {
   return new Response(JSON.stringify(data, null, 2), {
     status: status || 200,
-    headers: { "Content-Type": "application/json; charset=utf-8" },
+    headers: { "Content-Type": "application/json; charset=utf-8" }
   });
 }
 
 function htmlResponse(html, status) {
   return new Response(html, {
     status: status || 200,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+    headers: { "Content-Type": "text/html; charset=utf-8" }
   });
 }
 
@@ -586,6 +658,7 @@ function renderAppHtml() {
       border:1px solid #d1d5db;
       box-sizing:border-box;
       font-size:14px;
+      width:100%;
     }
     button { cursor:pointer; background:#111827; color:#fff; border:none; }
     button.secondary { background:#e5e7eb; color:#111827; }
@@ -710,9 +783,9 @@ function renderAppHtml() {
 
       <div class="grid">
         <div class="card">
-          <h2>3. Date et heure de départ</h2>
+          <h2>3. Date et heure de référence</h2>
           <input id="startAt" type="datetime-local" />
-          <div class="help">C’est la date de départ du step 1. Les étapes suivantes seront calculées à partir de leurs délais.</div>
+          <div class="help">Cette date sert de référence pour calculer la programmation de chaque étape, selon sa référence temporelle et sa fenêtre.</div>
         </div>
 
         <div class="card">
@@ -722,7 +795,7 @@ function renderAppHtml() {
             <button type="button" onclick="launchManual(false)">Programmer</button>
             <button type="button" class="success" onclick="launchManual(true)">Programmer et envoyer ce qui est dû maintenant</button>
           </div>
-          <div class="help">Pour un 2e message 24h plus tard, le step 2 doit contenir <code>logic_json.delay_hours_after_previous = 24</code>.</div>
+          <div class="help">La simulation vous montre la date réelle programmée pour chaque étape, en respectant la logique temporelle définie dans l’admin.</div>
         </div>
       </div>
 
@@ -733,7 +806,7 @@ function renderAppHtml() {
 
       <div class="card">
         <h2>Prévisualisation humaine</h2>
-        <div class="help">Cette zone reformate la simulation pour qu’elle soit lisible, sans JSON brut.</div>
+        <div class="help">Chaque étape est programmée à l’entrée de sa fenêtre temporelle, telle qu’elle a été définie dans l’interface d’administration.</div>
         <div id="manualPreview" class="preview-box">Lancez une simulation pour voir le détail.</div>
       </div>
     </div>
@@ -807,6 +880,14 @@ function renderAppHtml() {
       el.addEventListener('change', updateScenarioInfo);
     }
 
+    function translateWindowRef(ref) {
+      if (ref === 'occurs_at') return 'Date de survenance';
+      if (ref === 'predicted_start_at') return 'Début prévu';
+      if (ref === 'predicted_end_at') return 'Fin prévue';
+      if (ref === 'date_evenement') return 'Date d’événement';
+      return ref || 'Non renseigné';
+    }
+
     async function updateScenarioInfo() {
       var id = Number(document.getElementById('scenarioSelect').value);
       var sc = scenarios.find(function(x) { return x.id === id; });
@@ -821,11 +902,17 @@ function renderAppHtml() {
       lines.push('');
       lines.push('Étapes :');
 
-      if (Array.isArray(steps)) {
+      if (Array.isArray(steps) && steps.length) {
         steps.forEach(function(s) {
-          var delay = Number((s.logic_json && s.logic_json.delay_hours_after_previous) || 0);
-          lines.push('- ' + s.code + ' | ordre ' + s.step_order + ' | délai après précédent : ' + delay + 'h');
+          lines.push(
+            '- ' + s.code +
+            ' | ordre ' + s.step_order +
+            ' | référence : ' + translateWindowRef(s.window_ref) +
+            ' | fenêtre : ' + s.window_min_hours + 'h → ' + s.window_max_hours + 'h'
+          );
         });
+      } else {
+        lines.push('- Aucune étape active');
       }
 
       document.getElementById('scenarioInfo').textContent = lines.join('\\n');
@@ -909,6 +996,7 @@ function renderAppHtml() {
       }
 
       var lines = [];
+      lines.push('Scénario : ' + (data.scenario_label || ''));
       lines.push('Clients concernés : ' + (data.clients_concernes || 0));
       lines.push('Messages programmés : ' + (data.messages_programmes || 0));
       lines.push('');
@@ -916,7 +1004,9 @@ function renderAppHtml() {
       data.preview.forEach(function(item, idx) {
         lines.push('Message ' + (idx + 1));
         lines.push('Client : ' + (item.client_email || item.client_id));
-        lines.push('Étape : ' + item.scenario_step_id);
+        lines.push('Étape : ' + (item.step_code || item.scenario_step_id));
+        lines.push('Référence temporelle : ' + translateWindowRef(item.step_window_ref));
+        lines.push('Fenêtre : ' + item.step_window_min_hours + 'h → ' + item.step_window_max_hours + 'h');
         lines.push('Date prévue : ' + item.planned_send_at);
         lines.push('Objet : ' + item.subject_rendered);
         lines.push('------------------------------');
