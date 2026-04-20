@@ -914,6 +914,7 @@ function renderAppHtml() {
 
         document.getElementById('jobsFilter').addEventListener('input', renderJobsTable);
         document.getElementById('targetMode').addEventListener('change', toggleTargetInputs);
+        document.getElementById('targetZone').addEventListener('input', loadClientSummary);
       } catch (e) {
         document.getElementById('result').textContent = 'Erreur au chargement :\\n\\n' + (e.message || String(e));
       }
@@ -948,52 +949,82 @@ function renderAppHtml() {
       return ref || 'Non renseigné';
     }
 
+    function formatDateFr(value) {
+      if (!value) return '';
+      var d = new Date(value);
+      if (isNaN(d.getTime())) return value;
+      return d.toLocaleString('fr-FR');
+    }
+
     async function updateScenarioInfo() {
       var id = Number(document.getElementById('scenarioSelect').value);
       var sc = scenarios.find(function(x) { return x.id === id; });
       if (!sc) return;
-
+    
       var steps = await fetch('/api/scenarios/' + id + '/steps').then(function(r) { return r.json(); });
-
+    
       var lines = [];
-      lines.push('Scénario : ' + sc.label);
+      lines.push('Scénario sélectionné');
+      lines.push('');
+      lines.push('Nom : ' + sc.label);
+      lines.push('Code : ' + sc.code);
       lines.push('Mode : ' + sc.aggregation_mode);
       lines.push('Priorité : ' + sc.priority);
       lines.push('');
-      lines.push('Étapes :');
-
+    
+      lines.push('Ordre des messages prévus :');
+    
       if (Array.isArray(steps) && steps.length) {
-        steps.forEach(function(s) {
+        steps.forEach(function(s, idx) {
           lines.push(
-            '- ' + s.code +
-            ' | ordre ' + s.step_order +
+            (idx + 1) + '. Étape ' + s.code +
             ' | référence : ' + translateWindowRef(s.window_ref) +
             ' | fenêtre : ' + s.window_min_hours + 'h → ' + s.window_max_hours + 'h'
           );
         });
       } else {
-        lines.push('- Aucune étape active');
+        lines.push('Aucune étape active');
       }
-
-      document.getElementById('scenarioInfo').textContent = lines.join('\\n');
+    
+      document.getElementById('scenarioInfo').textContent = lines.join('\n');
     }
 
     function toggleTargetInputs() {
       var mode = document.getElementById('targetMode').value;
       document.getElementById('targetZone').style.display = mode === 'zone' ? 'block' : 'none';
+      loadClientSummary();
     }
 
     async function loadClientSummary() {
-      var data = await fetch('/api/clients/summary').then(function(r) { return r.json(); });
-      var lines = ['Clients actifs : ' + data.total_clients];
-      var zones = data.zones || {};
-
-      Object.keys(zones).sort().forEach(function(z) {
-        lines.push('Zone ' + z + ' : ' + zones[z] + ' client(s)');
-      });
-
-      document.getElementById('clientSummary').textContent = lines.join('\\n');
-    }
+        var data = await fetch('/api/clients/summary').then(function(r) { return r.json(); });
+        var mode = document.getElementById('targetMode').value;
+        var zone = document.getElementById('targetZone').value.trim();
+        var lines = [];
+      
+        lines.push('Résumé de la cible');
+        lines.push('');
+      
+        if (mode === 'all') {
+          lines.push('Cible choisie : tous les clients actifs');
+        } else if (mode === 'zone') {
+          lines.push('Cible choisie : clients de la zone ' + (zone || '(non renseignée)'));
+        }
+      
+        lines.push('Nombre total de clients actifs : ' + data.total_clients);
+      
+        var zones = data.zones || {};
+        var zoneKeys = Object.keys(zones).sort();
+      
+        if (zoneKeys.length) {
+          lines.push('');
+          lines.push('Répartition par zone :');
+          zoneKeys.forEach(function(z) {
+            lines.push('- Zone ' + z + ' : ' + zones[z] + ' client(s)');
+          });
+        }
+  
+    document.getElementById('clientSummary').textContent = lines.join('\n');
+  }
 
     function buildManualPayload(dryRun, sendNow) {
       var scenario_id = Number(document.getElementById('scenarioSelect').value);
@@ -1044,35 +1075,61 @@ function renderAppHtml() {
 
     function renderManualPreview(data) {
       var box = document.getElementById('manualPreview');
-
+    
       if (!data || !Array.isArray(data.preview)) {
         box.textContent = 'Aucune prévisualisation disponible.';
         return;
       }
-
+    
       if (!data.preview.length) {
         box.textContent = 'Aucun message ne serait programmé pour la cible choisie.';
         return;
       }
-
+    
       var lines = [];
-      lines.push('Scénario : ' + (data.scenario_label || ''));
-      lines.push('Clients concernés : ' + (data.clients_concernes || 0));
-      lines.push('Messages programmés : ' + (data.messages_programmes || 0));
+      lines.push('Résumé du lancement manuel');
       lines.push('');
-
-      data.preview.forEach(function(item, idx) {
-        lines.push('Message ' + (idx + 1));
-        lines.push('Client : ' + (item.client_email || item.client_id));
-        lines.push('Étape : ' + (item.step_code || item.scenario_step_id));
-        lines.push('Référence temporelle : ' + translateWindowRef(item.step_window_ref));
-        lines.push('Fenêtre : ' + item.step_window_min_hours + 'h → ' + item.step_window_max_hours + 'h');
-        lines.push('Date prévue : ' + item.planned_send_at);
-        lines.push('Objet : ' + item.subject_rendered);
-        lines.push('------------------------------');
+      lines.push('Scénario : ' + (data.scenario_label || ''));
+      lines.push('Nombre de clients concernés : ' + (data.clients_concernes || 0));
+      lines.push('Nombre total de messages programmés : ' + (data.messages_programmes || 0));
+      lines.push('');
+    
+      var grouped = {};
+      data.preview.forEach(function(item) {
+        var key = item.client_email || ('client-' + item.client_id);
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(item);
       });
-
-      box.textContent = lines.join('\\n');
+    
+      Object.keys(grouped).forEach(function(clientEmail) {
+        var items = grouped[clientEmail].slice().sort(function(a, b) {
+          var da = new Date(a.planned_send_at).getTime();
+          var db = new Date(b.planned_send_at).getTime();
+          return da - db;
+        });
+    
+        lines.push('Destinataire : ' + clientEmail);
+        lines.push('Ordre des messages :');
+    
+        items.forEach(function(item, index) {
+          lines.push(
+            '  ' + (index + 1) + '. ' +
+            (item.step_code || ('Étape ' + item.scenario_step_id))
+          );
+          lines.push('     Objet : ' + (item.subject_rendered || 'Sans objet'));
+          lines.push('     Envoi prévu : ' + formatDateFr(item.planned_send_at));
+          lines.push(
+            '     Base de calcul : ' +
+            translateWindowRef(item.step_window_ref) +
+            ' | fenêtre ' +
+            item.step_window_min_hours + 'h → ' + item.step_window_max_hours + 'h'
+          );
+        });
+    
+        lines.push('');
+      });
+    
+      box.textContent = lines.join('\n');
     }
 
     async function reloadJobsAndEmails() {
