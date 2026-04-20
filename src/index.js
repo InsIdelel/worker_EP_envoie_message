@@ -986,7 +986,7 @@ function renderAppHtml() {
         lines.push('Aucune étape active');
       }
     
-      document.getElementById('scenarioInfo').textContent = lines.join('\n');
+      document.getElementById('scenarioInfo').textContent = lines.join('\\n');
     }
 
     function toggleTargetInputs() {
@@ -1023,7 +1023,7 @@ function renderAppHtml() {
           });
         }
   
-    document.getElementById('clientSummary').textContent = lines.join('\n');
+    document.getElementById('clientSummary').textContent = lines.join('\\n');
   }
 
     function buildManualPayload(dryRun, sendNow) {
@@ -1129,7 +1129,7 @@ function renderAppHtml() {
         lines.push('');
       });
     
-      box.textContent = lines.join('\n');
+      box.textContent = lines.join('\\n');
     }
 
     async function reloadJobsAndEmails() {
