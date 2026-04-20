@@ -71,7 +71,47 @@ export default {
           "id,client_id,event_id,scenario_id,scenario_step_id,planned_send_at,priority,subject_rendered,status,created_at,sent_at",
           { order: "planned_send_at.asc", limit: 500 }
         );
-        return withCors(json(jobs));
+
+        const clients = await supabaseSelect(
+          env,
+          "clients",
+          "id,email,zone_geo,siret",
+          { active: "eq.true", limit: 2000 }
+        );
+        const scenarios = await supabaseSelect(
+          env,
+          "scenarios",
+          "id,code,label",
+          { limit: 1000 }
+        );
+        const steps = await supabaseSelect(
+          env,
+          "scenario_steps",
+          "id,scenario_id,code,step_order",
+          { limit: 2000 }
+        );
+
+        const clientMap = new Map(clients.map(function (x) { return [x.id, x]; }));
+        const scenarioMap = new Map(scenarios.map(function (x) { return [x.id, x]; }));
+        const stepMap = new Map(steps.map(function (x) { return [x.id, x]; }));
+
+        const enriched = jobs.map(function (j) {
+          const client = clientMap.get(j.client_id) || null;
+          const scenario = scenarioMap.get(j.scenario_id) || null;
+          const step = stepMap.get(j.scenario_step_id) || null;
+
+          return {
+            ...j,
+            client_email: client ? client.email : null,
+            client_zone_geo: client ? client.zone_geo : null,
+            scenario_code: scenario ? scenario.code : null,
+            scenario_label: scenario ? scenario.label : null,
+            step_code: step ? step.code : null,
+            step_order: step ? step.step_order : null
+          };
+        });
+
+        return withCors(json(enriched));
       }
 
       if (url.pathname === "/api/outbound-emails" && request.method === "GET") {
@@ -81,7 +121,25 @@ export default {
           "id,client_id,send_date,planned_send_at,subject_rendered,status,created_at,sent_at",
           { order: "id.desc", limit: 300 }
         );
-        return withCors(json(rows));
+
+        const clients = await supabaseSelect(
+          env,
+          "clients",
+          "id,email,zone_geo,siret",
+          { active: "eq.true", limit: 2000 }
+        );
+        const clientMap = new Map(clients.map(function (x) { return [x.id, x]; }));
+
+        const enriched = rows.map(function (r) {
+          const client = clientMap.get(r.client_id) || null;
+          return {
+            ...r,
+            client_email: client ? client.email : null,
+            client_zone_geo: client ? client.zone_geo : null
+          };
+        });
+
+        return withCors(json(enriched));
       }
 
       if (url.pathname === "/api/manual-launch" && request.method === "POST") {
@@ -257,6 +315,8 @@ async function launchManualScenario(env, payload) {
         client_id: client.id,
         client_email: client.email,
         scenario_id: scenario.id,
+        scenario_label: scenario.label,
+        scenario_code: scenario.code,
         scenario_step_id: step.id,
         step_code: step.code,
         step_window_ref: step.window_ref,
@@ -1048,8 +1108,11 @@ function renderAppHtml() {
           if (!filter) return true;
           var txt = [
             r.id,
+            r.client_email,
             r.client_id,
-            r.scenario_id,
+            r.scenario_label,
+            r.scenario_code,
+            r.step_code,
             r.scenario_step_id,
             r.planned_send_at,
             r.subject_rendered,
@@ -1061,9 +1124,9 @@ function renderAppHtml() {
           var tr = document.createElement('tr');
           tr.innerHTML =
             '<td>' + r.id + '</td>' +
-            '<td>' + r.client_id + '</td>' +
-            '<td>' + r.scenario_id + '</td>' +
-            '<td>' + r.scenario_step_id + '</td>' +
+            '<td>' + (r.client_email || r.client_id) + '</td>' +
+            '<td>' + (r.scenario_label || r.scenario_code || r.scenario_id) + '</td>' +
+            '<td>' + (r.step_code || r.scenario_step_id) + '</td>' +
             '<td>' + (r.planned_send_at || '') + '</td>' +
             '<td>' + (r.subject_rendered || '') + '</td>' +
             '<td><span class="pill">' + r.status + '</span></td>';
@@ -1081,7 +1144,7 @@ function renderAppHtml() {
         var tr = document.createElement('tr');
         tr.innerHTML =
           '<td>' + r.id + '</td>' +
-          '<td>' + r.client_id + '</td>' +
+          '<td>' + (r.client_email || r.client_id) + '</td>' +
           '<td>' + (r.send_date || '') + '</td>' +
           '<td>' + (r.subject_rendered || '') + '</td>' +
           '<td><span class="pill">' + r.status + '</span></td>';
