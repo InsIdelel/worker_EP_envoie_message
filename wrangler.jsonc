@@ -4,7 +4,7 @@
   "compatibility_date": "2026-04-13",
   "triggers": {
     "crons": ["*/5 * * * *"]
-  }
+  },
   "vars": {
     "MAILGUN_DOMAIN": "mail.votredomaine.com",
     "MAILGUN_BASE_URL": "https://api.mailgun.net",
