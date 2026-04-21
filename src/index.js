@@ -455,87 +455,152 @@ function buildManualDedupeKey(scenarioId) {
 }
 
 async function processDueMessages(env) {
-  const nowIso = new Date().toISOString();
-
-  const dueItems = await supabaseSelect(
-    env,
-    "client_message_items",
-    "id,client_id,event_id,scenario_id,scenario_step_id,planned_send_at,priority,subject_rendered,body_rendered,render_context,applied_content_versions,status",
-    {
-      status: "eq.ready",
-      planned_send_at: "lte." + nowIso,
-      order: "planned_send_at.asc",
-      limit: 200
+    const nowIso = new Date().toISOString();
+  
+    const dueItems = await supabaseSelect(
+      env,
+      "client_message_items",
+      "id,client_id,event_id,scenario_id,scenario_step_id,planned_send_at,priority,subject_rendered,body_rendered,render_context,applied_content_versions,status",
+      {
+        status: "eq.ready",
+        planned_send_at: "lte." + nowIso,
+        order: "planned_send_at.asc",
+        limit: 200
+      }
+    );
+  
+    if (!dueItems.length) {
+      return { ok: true, processed: 0, sent: 0, message: "Aucun envoi dû." };
     }
-  );
-
-  if (!dueItems.length) {
-    return { ok: true, processed: 0, sent: 0 };
+  
+    const clients = await supabaseSelect(env, "clients", "id,email,zone_geo,siret", {
+      active: "eq.true"
+    });
+  
+    const clientMap = new Map(clients.map(function (c) {
+      return [c.id, c];
+    }));
+  
+    let sent = 0;
+    const logs = [];
+  
+    for (const item of dueItems) {
+      try {
+        const client = clientMap.get(item.client_id);
+  
+        if (!client || !client.email) {
+          logs.push({
+            item_id: item.id,
+            step: "client_lookup",
+            status: "skipped",
+            reason: "client introuvable ou sans email"
+          });
+          continue;
+        }
+  
+        logs.push({
+          item_id: item.id,
+          step: "client_lookup",
+          status: "ok",
+          client_email: client.email
+        });
+  
+        const outbound = await supabaseInsert(env, "outbound_emails", {
+          client_id: item.client_id,
+          send_date: item.planned_send_at.slice(0, 10),
+          planned_send_at: item.planned_send_at,
+          subject_rendered: item.subject_rendered,
+          body_rendered: item.body_rendered,
+          status: "queued",
+          presta_id: null,
+          sent_at: null
+        });
+  
+        logs.push({
+          item_id: item.id,
+          step: "insert_outbound_emails",
+          status: "ok",
+          outbound_email_id: outbound.id
+        });
+  
+        await supabaseInsert(env, "outbound_email_items", {
+          outbound_email_id: outbound.id,
+          client_message_item_id: item.id,
+          display_order: 1
+        });
+  
+        logs.push({
+          item_id: item.id,
+          step: "insert_outbound_email_items",
+          status: "ok"
+        });
+  
+        const sendResult = await sendEmail(env, {
+          to: client.email,
+          subject: item.subject_rendered,
+          html: item.body_rendered,
+          text: stripHtml(item.body_rendered)
+        });
+  
+        logs.push({
+          item_id: item.id,
+          step: "mailgun_send",
+          status: "ok",
+          provider_id: sendResult.provider_id || null
+        });
+  
+        await supabasePatch(env, "outbound_emails", outbound.id, {
+          status: "sent",
+          presta_id: sendResult.provider_id || "mail-provider",
+          sent_at: new Date().toISOString()
+        });
+  
+        await supabasePatch(env, "client_message_items", item.id, {
+          status: "sent",
+          sent_at: new Date().toISOString()
+        });
+  
+        await supabaseInsert(env, "envois_log", {
+          outbound_email_id: outbound.id,
+          client_id: item.client_id,
+          event_id: item.event_id,
+          sent_at: new Date().toISOString(),
+          presta_id: sendResult.provider_id || "mail-provider",
+          message: item.body_rendered
+        });
+  
+        logs.push({
+          item_id: item.id,
+          step: "finalize",
+          status: "ok"
+        });
+  
+        sent++;
+      } catch (e) {
+        logs.push({
+          item_id: item.id,
+          status: "error",
+          error: e.message || String(e)
+        });
+  
+        return {
+          ok: false,
+          processed: dueItems.length,
+          sent: sent,
+          failed_item_id: item.id,
+          logs: logs,
+          error: e.message || String(e)
+        };
+      }
+    }
+  
+    return {
+      ok: true,
+      processed: dueItems.length,
+      sent: sent,
+      logs: logs
+    };
   }
-
-  const clients = await supabaseSelect(env, "clients", "id,email,zone_geo,siret", {
-    active: "eq.true"
-  });
-
-  const clientMap = new Map(clients.map(function (c) {
-    return [c.id, c];
-  }));
-
-  let sent = 0;
-
-  for (const item of dueItems) {
-    const client = clientMap.get(item.client_id);
-    if (!client || !client.email) continue;
-
-    const outbound = await supabaseInsert(env, "outbound_emails", {
-      client_id: item.client_id,
-      send_date: item.planned_send_at.slice(0, 10),
-      planned_send_at: item.planned_send_at,
-      subject_rendered: item.subject_rendered,
-      body_rendered: item.body_rendered,
-      status: "queued",
-      presta_id: null,
-      sent_at: null
-    });
-
-    await supabaseInsert(env, "outbound_email_items", {
-      outbound_email_id: outbound.id,
-      client_message_item_id: item.id,
-      display_order: 1
-    });
-
-    const sendResult = await sendEmail(env, {
-      to: client.email,
-      subject: item.subject_rendered,
-      html: item.body_rendered,
-      text: stripHtml(item.body_rendered)
-    });
-
-    await supabasePatch(env, "outbound_emails", outbound.id, {
-      status: "sent",
-      presta_id: sendResult.provider_id || "mail-provider",
-      sent_at: new Date().toISOString()
-    });
-
-    await supabasePatch(env, "client_message_items", item.id, {
-      status: "sent",
-      sent_at: new Date().toISOString()
-    });
-
-    await supabaseInsert(env, "envois_log", {
-      outbound_email_id: outbound.id,
-      client_id: item.client_id,
-      event_id: item.event_id,
-      sent_at: new Date().toISOString(),
-      presta_id: sendResult.provider_id || "mail-provider",
-      message: item.body_rendered
-    });
-
-    sent++;
-  }
-
-  return { ok: true, processed: dueItems.length, sent: sent };
-}
 
 function buildRenderContext(event, client, step, scenario) {
   return {
