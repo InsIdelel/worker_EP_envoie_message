@@ -19,7 +19,9 @@ export default {
         return withCors(json({
           has_SUPABASE_URL: !!env.SUPABASE_URL,
           has_SUPABASE_SERVICE_ROLE_KEY: !!env.SUPABASE_SERVICE_ROLE_KEY,
-          has_RESEND_API_KEY: !!env.RESEND_API_KEY,
+          has_MAILGUN_API_KEY: !!env.MAILGUN_API_KEY,
+          has_MAILGUN_DOMAIN: !!env.MAILGUN_DOMAIN,
+          has_MAILGUN_BASE_URL: !!env.MAILGUN_BASE_URL,
           has_MAIL_FROM: !!env.MAIL_FROM
         }));
       }
