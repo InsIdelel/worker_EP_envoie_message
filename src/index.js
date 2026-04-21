@@ -454,6 +454,21 @@ function buildManualDedupeKey(scenarioId) {
   return "MANUAL_TRIGGER|scenario:" + scenarioId + "|" + new Date().toISOString();
 }
 
+async function getExistingOutboundEmail(env, clientId, sendDate) {
+    const rows = await supabaseSelect(
+      env,
+      "outbound_emails",
+      "id,client_id,send_date,planned_send_at,subject_rendered,body_rendered,status,presta_id,sent_at",
+      {
+        client_id: "eq." + clientId,
+        send_date: "eq." + sendDate,
+        limit: 1
+      }
+    );
+  
+    return rows[0] || null;
+  }
+
 async function processDueMessages(env) {
     const nowIso = new Date().toISOString();
   
@@ -498,42 +513,78 @@ async function processDueMessages(env) {
           continue;
         }
   
+        const sendDate = item.planned_send_at.slice(0, 10);
+  
         logs.push({
           item_id: item.id,
           step: "client_lookup",
           status: "ok",
-          client_email: client.email
+          client_email: client.email,
+          send_date: sendDate
         });
   
-        const outbound = await supabaseInsert(env, "outbound_emails", {
-          client_id: item.client_id,
-          send_date: item.planned_send_at.slice(0, 10),
-          planned_send_at: item.planned_send_at,
-          subject_rendered: item.subject_rendered,
-          body_rendered: item.body_rendered,
-          status: "queued",
-          presta_id: null,
-          sent_at: null
-        });
+        let outbound = await getExistingOutboundEmail(env, item.client_id, sendDate);
   
-        logs.push({
-          item_id: item.id,
-          step: "insert_outbound_emails",
-          status: "ok",
-          outbound_email_id: outbound.id
-        });
+        if (outbound) {
+          logs.push({
+            item_id: item.id,
+            step: "find_outbound_email",
+            status: "ok",
+            mode: "existing",
+            outbound_email_id: outbound.id
+          });
+        } else {
+          outbound = await supabaseInsert(env, "outbound_emails", {
+            client_id: item.client_id,
+            send_date: sendDate,
+            planned_send_at: item.planned_send_at,
+            subject_rendered: item.subject_rendered,
+            body_rendered: item.body_rendered,
+            status: "queued",
+            presta_id: null,
+            sent_at: null
+          });
   
-        await supabaseInsert(env, "outbound_email_items", {
-          outbound_email_id: outbound.id,
-          client_message_item_id: item.id,
-          display_order: 1
-        });
+          logs.push({
+            item_id: item.id,
+            step: "insert_outbound_emails",
+            status: "ok",
+            mode: "created",
+            outbound_email_id: outbound.id
+          });
+        }
   
-        logs.push({
-          item_id: item.id,
-          step: "insert_outbound_email_items",
-          status: "ok"
-        });
+        const existingLink = await supabaseSelect(
+          env,
+          "outbound_email_items",
+          "id,outbound_email_id,client_message_item_id",
+          {
+            outbound_email_id: "eq." + outbound.id,
+            client_message_item_id: "eq." + item.id,
+            limit: 1
+          }
+        );
+  
+        if (!existingLink.length) {
+          await supabaseInsert(env, "outbound_email_items", {
+            outbound_email_id: outbound.id,
+            client_message_item_id: item.id,
+            display_order: 1
+          });
+  
+          logs.push({
+            item_id: item.id,
+            step: "insert_outbound_email_items",
+            status: "ok"
+          });
+        } else {
+          logs.push({
+            item_id: item.id,
+            step: "insert_outbound_email_items",
+            status: "skipped",
+            reason: "liaison déjà existante"
+          });
+        }
   
         const sendResult = await sendEmail(env, {
           to: client.email,
