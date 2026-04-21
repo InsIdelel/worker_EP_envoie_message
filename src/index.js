@@ -632,9 +632,9 @@ async function sendEmail(env, payload) {
     const html = payload.html || "";
     const text = payload.text || stripHtml(html);
   
-    if (!env.MAILGUN_API_KEY || !env.MAILGUN_DOMAIN || !env.MAIL_FROM) {
-      return { provider_id: "mailgun-disabled" };
-    }
+    if (!env.MAILGUN_API_KEY) throw new Error("MAILGUN_API_KEY manquante");
+    if (!env.MAILGUN_DOMAIN) throw new Error("MAILGUN_DOMAIN manquant");
+    if (!env.MAIL_FROM) throw new Error("MAIL_FROM manquant");
   
     const baseUrl = (env.MAILGUN_BASE_URL || "https://api.mailgun.net").replace(/\/+$/, "");
     const url = baseUrl + "/v3/" + env.MAILGUN_DOMAIN + "/messages";
@@ -1299,9 +1299,32 @@ function renderAppHtml() {
     }
 
     async function processDue() {
-      var data = await fetch('/api/process-due', { method: 'POST' }).then(function(r) { return r.json(); });
-      document.getElementById('result').textContent = JSON.stringify(data, null, 2);
-      await reloadJobsAndEmails();
+      try {
+        var response = await fetch('/api/process-due', { method: 'POST' });
+        var text = await response.text();
+    
+        console.log('HTTP status /api/process-due =', response.status);
+        console.log('Réponse brute /api/process-due =', text);
+    
+        var data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          throw new Error('La réponse n’est pas un JSON valide : ' + text);
+        }
+    
+        document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+    
+        if (!response.ok) {
+          throw new Error(data.error || 'Erreur HTTP ' + response.status);
+        }
+    
+        await reloadJobsAndEmails();
+      } catch (e) {
+        console.error('Erreur processDue()', e);
+        document.getElementById('result').textContent =
+          'Erreur lors du traitement des envois dus :\\n\\n' + (e.message || String(e));
+      }
     }
 
     boot();
