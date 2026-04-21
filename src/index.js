@@ -505,7 +505,8 @@ async function processDueMessages(env) {
     const sendResult = await sendEmail(env, {
       to: client.email,
       subject: item.subject_rendered,
-      html: item.body_rendered.replace(/\n/g, "<br>")
+      html: item.body_rendered,
+      text: stripHtml(item.body_rendered)
     });
 
     await supabasePatch(env, "outbound_emails", outbound.id, {
@@ -559,35 +560,54 @@ function renderTemplate(template, context) {
 }
 
 async function sendEmail(env, payload) {
-  const to = payload.to;
-  const subject = payload.subject;
-  const html = payload.html;
-
-  if (!env.RESEND_API_KEY || !env.MAIL_FROM) {
-    return { provider_id: "mail-disabled" };
+    const to = payload.to;
+    const subject = payload.subject;
+    const html = payload.html || "";
+    const text = payload.text || stripHtml(html);
+  
+    if (!env.MAILGUN_API_KEY || !env.MAILGUN_DOMAIN || !env.MAIL_FROM) {
+      return { provider_id: "mailgun-disabled" };
+    }
+  
+    const baseUrl = (env.MAILGUN_BASE_URL || "https://api.mailgun.net").replace(/\/+$/, "");
+    const url = baseUrl + "/v3/" + env.MAILGUN_DOMAIN + "/messages";
+  
+    const form = new FormData();
+    form.append("from", env.MAIL_FROM);
+    form.append("to", to);
+    form.append("subject", subject);
+    form.append("html", html);
+    form.append("text", text);
+  
+    const auth = "Basic " + btoa("api:" + env.MAILGUN_API_KEY);
+  
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: auth
+      },
+      body: form
+    });
+  
+    if (!resp.ok) {
+      throw new Error("Erreur d’envoi Mailgun: " + (await resp.text()));
+    }
+  
+    const data = await resp.json();
+    return { provider_id: data.id || "mailgun" };
   }
-
-  const resp = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + env.RESEND_API_KEY,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      from: env.MAIL_FROM,
-      to: [to],
-      subject: subject,
-      html: html
-    })
-  });
-
-  if (!resp.ok) {
-    throw new Error("Erreur d’envoi email: " + (await resp.text()));
+  
+  function stripHtml(html) {
+    return String(html || "")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n\n")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\n\s+\n/g, "\n\n")
+      .replace(/[ \t]+/g, " ")
+      .trim();
   }
-
-  const data = await resp.json();
-  return { provider_id: data.id || "resend" };
-}
 
 async function supabaseSelect(env, table, select, query) {
   ensureSupabaseEnv(env);
