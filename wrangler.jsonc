@@ -6,8 +6,8 @@
     "crons": ["*/5 * * * *"]
   },
   "vars": {
-    "MAILGUN_DOMAIN": "mail.votredomaine.com",
+    "MAILGUN_DOMAIN": "sandbox3615b7a249fb46f5ad06a20dfd0fbbb9.mailgun.org",
     "MAILGUN_BASE_URL": "https://api.mailgun.net",
-    "MAIL_FROM": "Prévention Routière <noreply@mail.votredomaine.com>"
+    "MAIL_FROM": "Prévention Routière <noreply@sandbox3615b7a249fb46f5ad06a20dfd0fbbb9.mailgun.org>"
   }
 }
