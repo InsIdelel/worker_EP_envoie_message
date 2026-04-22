@@ -480,12 +480,18 @@ async function processDueMessages(env) {
         status: "eq.ready",
         planned_send_at: "lte." + nowIso,
         order: "planned_send_at.asc",
-        limit: 200
+        limit: 500
       }
     );
   
     if (!dueItems.length) {
-      return { ok: true, processed: 0, sent: 0, message: "Aucun envoi dû." };
+      return {
+        ok: true,
+        processed: 0,
+        sent: 0,
+        grouped_emails: 0,
+        message: "Aucun envoi dû."
+      };
     }
   
     const clients = await supabaseSelect(env, "clients", "id,email,zone_geo,siret", {
@@ -496,16 +502,19 @@ async function processDueMessages(env) {
       return [c.id, c];
     }));
   
-    let sent = 0;
+    const groups = groupDueItemsByClientAndDate(dueItems);
+  
+    let sentGroups = 0;
+    let sentItems = 0;
     const logs = [];
   
-    for (const item of dueItems) {
+    for (const group of groups) {
       try {
-        const client = clientMap.get(item.client_id);
+        const client = clientMap.get(group.client_id);
   
         if (!client || !client.email) {
           logs.push({
-            item_id: item.id,
+            group_key: group.key,
             step: "client_lookup",
             status: "skipped",
             reason: "client introuvable ou sans email"
@@ -513,40 +522,47 @@ async function processDueMessages(env) {
           continue;
         }
   
-        const sendDate = item.planned_send_at.slice(0, 10);
-  
-        logs.push({
-          item_id: item.id,
-          step: "client_lookup",
-          status: "ok",
-          client_email: client.email,
-          send_date: sendDate
+        const sortedItems = group.items.slice().sort(function (a, b) {
+          return new Date(a.planned_send_at).getTime() - new Date(b.planned_send_at).getTime();
         });
   
-        let outbound = await getExistingOutboundEmail(env, item.client_id, sendDate);
+        const subject = buildAggregatedSubject(sortedItems);
+        const html = buildAggregatedHtml(sortedItems);
+        const text = stripHtml(html);
+  
+        let outbound = await getExistingOutboundEmail(env, group.client_id, group.send_date);
   
         if (outbound) {
           logs.push({
-            item_id: item.id,
+            group_key: group.key,
             step: "find_outbound_email",
             status: "ok",
             mode: "existing",
             outbound_email_id: outbound.id
           });
+  
+          await supabasePatch(env, "outbound_emails", outbound.id, {
+            planned_send_at: sortedItems[0].planned_send_at,
+            subject_rendered: subject,
+            body_rendered: html,
+            status: "queued",
+            presta_id: null,
+            sent_at: null
+          });
         } else {
           outbound = await supabaseInsert(env, "outbound_emails", {
-            client_id: item.client_id,
-            send_date: sendDate,
-            planned_send_at: item.planned_send_at,
-            subject_rendered: item.subject_rendered,
-            body_rendered: item.body_rendered,
+            client_id: group.client_id,
+            send_date: group.send_date,
+            planned_send_at: sortedItems[0].planned_send_at,
+            subject_rendered: subject,
+            body_rendered: html,
             status: "queued",
             presta_id: null,
             sent_at: null
           });
   
           logs.push({
-            item_id: item.id,
+            group_key: group.key,
             step: "insert_outbound_emails",
             status: "ok",
             mode: "created",
@@ -554,50 +570,49 @@ async function processDueMessages(env) {
           });
         }
   
-        const existingLink = await supabaseSelect(
-          env,
-          "outbound_email_items",
-          "id,outbound_email_id,client_message_item_id",
-          {
-            outbound_email_id: "eq." + outbound.id,
-            client_message_item_id: "eq." + item.id,
-            limit: 1
+        for (let i = 0; i < sortedItems.length; i++) {
+          const item = sortedItems[i];
+  
+          const existingLink = await supabaseSelect(
+            env,
+            "outbound_email_items",
+            "id,outbound_email_id,client_message_item_id",
+            {
+              outbound_email_id: "eq." + outbound.id,
+              client_message_item_id: "eq." + item.id,
+              limit: 1
+            }
+          );
+  
+          if (!existingLink.length) {
+            await supabaseInsert(env, "outbound_email_items", {
+              outbound_email_id: outbound.id,
+              client_message_item_id: item.id,
+              display_order: i + 1
+            });
           }
-        );
-  
-        if (!existingLink.length) {
-          await supabaseInsert(env, "outbound_email_items", {
-            outbound_email_id: outbound.id,
-            client_message_item_id: item.id,
-            display_order: 1
-          });
-  
-          logs.push({
-            item_id: item.id,
-            step: "insert_outbound_email_items",
-            status: "ok"
-          });
-        } else {
-          logs.push({
-            item_id: item.id,
-            step: "insert_outbound_email_items",
-            status: "skipped",
-            reason: "liaison déjà existante"
-          });
         }
+  
+        logs.push({
+          group_key: group.key,
+          step: "insert_outbound_email_items",
+          status: "ok",
+          items_count: sortedItems.length
+        });
   
         const sendResult = await sendEmail(env, {
           to: client.email,
-          subject: item.subject_rendered,
-          html: item.body_rendered,
-          text: stripHtml(item.body_rendered)
+          subject: subject,
+          html: html,
+          text: text
         });
   
         logs.push({
-          item_id: item.id,
+          group_key: group.key,
           step: "mailgun_send",
           status: "ok",
-          provider_id: sendResult.provider_id || null
+          provider_id: sendResult.provider_id || null,
+          client_email: client.email
         });
   
         await supabasePatch(env, "outbound_emails", outbound.id, {
@@ -606,30 +621,36 @@ async function processDueMessages(env) {
           sent_at: new Date().toISOString()
         });
   
-        await supabasePatch(env, "client_message_items", item.id, {
-          status: "sent",
-          sent_at: new Date().toISOString()
-        });
+        for (const item of sortedItems) {
+          await supabasePatch(env, "client_message_items", item.id, {
+            status: "sent",
+            sent_at: new Date().toISOString()
+          });
   
-        await supabaseInsert(env, "envois_log", {
-          outbound_email_id: outbound.id,
-          client_id: item.client_id,
-          event_id: item.event_id,
-          sent_at: new Date().toISOString(),
-          presta_id: sendResult.provider_id || "mail-provider",
-          message: item.body_rendered
-        });
+          await supabaseInsert(env, "envois_log", {
+            outbound_email_id: outbound.id,
+            client_id: item.client_id,
+            event_id: item.event_id,
+            sent_at: new Date().toISOString(),
+            presta_id: sendResult.provider_id || "mail-provider",
+            message: item.body_rendered
+          });
+  
+          sentItems++;
+        }
   
         logs.push({
-          item_id: item.id,
+          group_key: group.key,
           step: "finalize",
-          status: "ok"
+          status: "ok",
+          outbound_email_id: outbound.id,
+          items_sent: sortedItems.length
         });
   
-        sent++;
+        sentGroups++;
       } catch (e) {
         logs.push({
-          item_id: item.id,
+          group_key: group.key,
           status: "error",
           error: e.message || String(e)
         });
@@ -637,8 +658,9 @@ async function processDueMessages(env) {
         return {
           ok: false,
           processed: dueItems.length,
-          sent: sent,
-          failed_item_id: item.id,
+          sent: sentItems,
+          grouped_emails: sentGroups,
+          failed_group: group.key,
           logs: logs,
           error: e.message || String(e)
         };
@@ -648,10 +670,83 @@ async function processDueMessages(env) {
     return {
       ok: true,
       processed: dueItems.length,
-      sent: sent,
+      sent: sentItems,
+      grouped_emails: sentGroups,
       logs: logs
     };
   }
+
+function groupDueItemsByClientAndDate(items) {
+  const map = new Map();
+
+  for (const item of items) {
+    const sendDate = item.planned_send_at.slice(0, 10);
+    const key = item.client_id + "|" + sendDate;
+
+    if (!map.has(key)) {
+      map.set(key, {
+        key: key,
+        client_id: item.client_id,
+        send_date: sendDate,
+        items: []
+      });
+    }
+
+    map.get(key).items.push(item);
+  }
+
+  return Array.from(map.values());
+}
+
+function buildAggregatedSubject(items) {
+  if (!items || !items.length) {
+    return "Prévention routière";
+  }
+
+  if (items.length === 1) {
+    return items[0].subject_rendered || "Prévention routière";
+  }
+
+  return "Prévention routière : " + items.length + " points de vigilance pour vos équipes";
+}
+
+function buildAggregatedHtml(items) {
+  const intro =
+    '<p>Bonjour,</p>' +
+    '<p>Voici les points de vigilance identifiés pour vos équipes :</p>';
+
+  const blocks = items.map(function (item, index) {
+    return (
+      '<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;" />' +
+      '<h3 style="margin:0 0 12px 0;font-family:Arial,sans-serif;">' +
+      (index + 1) + '. ' + escapeHtmlForEmail(item.subject_rendered || 'Point de vigilance') +
+      '</h3>' +
+      '<div style="font-family:Arial,sans-serif;line-height:1.5;">' +
+      (item.body_rendered || '') +
+      '</div>'
+    );
+  });
+
+  const outro =
+    '<p style="margin-top:24px;">Bonne diffusion interne.</p>';
+
+  return (
+    '<div style="font-family:Arial,sans-serif;font-size:14px;color:#111827;">' +
+    intro +
+    blocks.join('') +
+    outro +
+    '</div>'
+  );
+}
+
+function escapeHtmlForEmail(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 function buildRenderContext(event, client, step, scenario) {
   return {
