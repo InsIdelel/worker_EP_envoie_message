@@ -7,7 +7,7 @@
   },
   "vars": {
     "MAILGUN_DOMAIN": "mobisur.net",
-    "MAILGUN_BASE_URL": "https://api.mailgun.net",
+    "MAILGUN_BASE_URL": "https://api.eu.mailgun.net",
     "MAIL_FROM": "Mobisur <noreply@mobisur.net>",
     "MAILGUN_API_KEY" : "e5f1bb5e0680778f33c24f0b36ca91e6-428c42a0-19d81e93",
     "SUPABASE_URL": "https://vnjdnshvixzqawkewwfk.supabase.co",
