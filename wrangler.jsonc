@@ -9,6 +9,8 @@
     "MAILGUN_DOMAIN": "mobisur.net",
     "MAILGUN_BASE_URL": "https://api.mailgun.net",
     "MAIL_FROM": "Mobisur <noreply@mobisur.net>",
-    "MAILGUN_API_KEY" : "e5f1bb5e0680778f33c24f0b36ca91e6-428c42a0-19d81e93"
+    "MAILGUN_API_KEY" : "e5f1bb5e0680778f33c24f0b36ca91e6-428c42a0-19d81e93",
+    "SUPABASE_URL": "https://vnjdnshvixzqawkewwfk.supabase.co",
+    "SUPABASE_SERVICE_ROLE_KEY" : "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZuamRuc2h2aXh6cWF3a2V3d2ZrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTE4NzE3NywiZXhwIjoyMDg2NzYzMTc3fQ.zYv8wEAGtRwyvr4nBuVYH0Slh3R8DJu7LsYTC3a0kzc"
   }
 }
