@@ -1044,6 +1044,209 @@ function renderAppHtml() {
     @media (max-width: 980px) {
       .grid, .kpis { grid-template-columns:1fr; }
     }
+    body {
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  background: radial-gradient(circle at top left, #dbeafe, #f8fafc 42%, #eef2f7);
+  color: #0f172a;
+}
+
+header {
+  background: linear-gradient(135deg, #0f172a, #164e63 58%, #166534);
+  color: #fff;
+  padding: 34px;
+  border-radius: 0 0 34px 34px;
+  box-shadow: 0 22px 70px rgba(15, 23, 42, .18);
+}
+
+header h1 {
+  font-size: 38px;
+  letter-spacing: -.04em;
+  margin-bottom: 8px;
+}
+
+.tabs {
+  display: flex;
+  gap: 10px;
+  margin: 24px 0 18px;
+}
+
+.tab {
+  border: 1px solid #e2e8f0;
+  background: white;
+  color: #0f172a;
+  border-radius: 999px;
+  padding: 12px 16px;
+  font-weight: 850;
+}
+
+.tab.active {
+  background: #0f172a;
+  color: white;
+}
+
+.card,
+.kpi {
+  background: rgba(255,255,255,.94);
+  border: 1px solid #e2e8f0;
+  border-radius: 24px;
+  box-shadow: 0 16px 42px rgba(15, 23, 42, .07);
+}
+
+.kpi .v {
+  font-size: 34px;
+  letter-spacing: -.04em;
+}
+
+button {
+  border-radius: 15px;
+  font-weight: 850;
+}
+
+.preview-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 22px;
+  padding: 16px;
+  min-height: 220px;
+  white-space: normal;
+}
+
+.result {
+  display: none;
+}
+
+.empty {
+  padding: 18px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 18px;
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.summary-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  padding: 14px;
+}
+
+.summary-card span {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.summary-card b {
+  font-size: 18px;
+}
+
+.client-block {
+  margin-top: 18px;
+}
+
+.client-title {
+  font-weight: 900;
+  margin-bottom: 12px;
+}
+
+.timeline-row {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.timeline-dot {
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  font-weight: 950;
+}
+
+.timeline-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 22px;
+  padding: 16px;
+}
+
+.timeline-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.timeline-head b {
+  display: block;
+  font-size: 17px;
+}
+
+.timeline-head p {
+  margin: 4px 0 0;
+  color: #475569;
+}
+
+.badge {
+  white-space: nowrap;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.meta-line {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.meta-line span {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 6px 9px;
+}
+
+.content-list {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.content-chip {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 10px 12px;
+  font-weight: 700;
+}
+
+.content-chip small {
+  color: #64748b;
+  font-weight: 600;
+}
   </style>
 </head>
 <body>
@@ -1149,10 +1352,10 @@ function renderAppHtml() {
         </div>
       </div>
 
-      <div class="card">
-        <h2>Résultat / simulation</h2>
+      <details class="card">
+        <summary>Détails techniques</summary>
         <div id="result" class="result">Aucune action exécutée.</div>
-      </div>
+      </details>
 
       <div class="card">
         <h2>Prévisualisation humaine</h2>
@@ -1180,6 +1383,15 @@ function renderAppHtml() {
         document.getElementById('panelManual').classList.add('active');
         document.getElementById('tabManual').classList.add('active');
       }
+    }
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
     }
 
     async function boot() {
@@ -1367,23 +1579,14 @@ function renderAppHtml() {
       var box = document.getElementById('manualPreview');
     
       if (!data || !Array.isArray(data.preview)) {
-        box.textContent = 'Aucune prévisualisation disponible.';
+        box.innerHTML = '<div class="empty">Aucune prévisualisation disponible.</div>';
         return;
       }
     
       if (!data.preview.length) {
-        box.textContent = 'Aucun message ne serait programmé pour la cible choisie.';
+        box.innerHTML = '<div class="empty">Aucun envoi ne serait programmé pour la cible choisie.</div>';
         return;
       }
-    
-      var lines = [];
-    
-      lines.push('Résumé du lancement manuel');
-      lines.push('');
-      lines.push('Scénario : ' + (data.scenario_label || ''));
-      lines.push('Clients concernés : ' + (data.clients_concernes || 0));
-      lines.push('Envois programmés : ' + (data.messages_programmes || 0));
-      lines.push('');
     
       var groupedByClient = {};
     
@@ -1393,51 +1596,63 @@ function renderAppHtml() {
         groupedByClient[key].push(item);
       });
     
+      var html = '';
+    
+      html += '<div class="summary-grid">';
+      html += '<div class="summary-card"><span>Scénario</span><b>' + escapeHtml(data.scenario_label || '') + '</b></div>';
+      html += '<div class="summary-card"><span>Clients concernés</span><b>' + escapeHtml(data.clients_concernes || 0) + '</b></div>';
+      html += '<div class="summary-card"><span>Envois programmés</span><b>' + escapeHtml(data.messages_programmes || 0) + '</b></div>';
+      html += '</div>';
+    
       Object.keys(groupedByClient).forEach(function(clientEmail) {
         var items = groupedByClient[clientEmail].slice().sort(function(a, b) {
           return new Date(a.planned_send_at).getTime() - new Date(b.planned_send_at).getTime();
         });
     
-        lines.push('────────────────────────────');
-        lines.push('Destinataire : ' + clientEmail);
-        lines.push('');
+        html += '<div class="client-block">';
+        html += '<div class="client-title">Destinataire : ' + escapeHtml(clientEmail) + '</div>';
     
         items.forEach(function(item, index) {
-          lines.push((index + 1) + '. Moment d’envoi : ' + (item.step_code || 'Étape'));
-          lines.push('   Objet : ' + (item.subject_rendered || 'Sans objet'));
-          lines.push('   Envoi prévu : ' + formatDateFr(item.planned_send_at));
-          lines.push(
-            '   Calcul : ' +
-            translateWindowRef(item.step_window_ref) +
-            ' · ' +
-            item.step_window_max_hours +
-            'h avant'
-          );
+          var grouped = item.is_grouped_step;
+          var typeLabel = grouped
+            ? 'Regroupement de ' + item.content_count + ' contenus'
+            : 'Message simple';
     
-          if (item.is_grouped_step) {
-            lines.push('   Type : regroupement de ' + item.content_count + ' contenus');
-          } else {
-            lines.push('   Type : message simple');
-          }
+          html += '<div class="timeline-row">';
+          html += '<div class="timeline-dot">' + escapeHtml(index + 1) + '</div>';
+          html += '<div class="timeline-card">';
+          html += '<div class="timeline-head">';
+          html += '<div>';
+          html += '<b>' + escapeHtml(item.step_code || 'Étape') + '</b>';
+          html += '<p>' + escapeHtml(item.subject_rendered || 'Sans objet') + '</p>';
+          html += '</div>';
+          html += '<span class="badge">' + escapeHtml(typeLabel) + '</span>';
+          html += '</div>';
+    
+          html += '<div class="meta-line">';
+          html += '<span>Envoi prévu : <strong>' + escapeHtml(formatDateFr(item.planned_send_at)) + '</strong></span>';
+          html += '<span>Calcul : ' + escapeHtml(translateWindowRef(item.step_window_ref)) + ' · ' + escapeHtml(item.step_window_max_hours) + 'h avant</span>';
+          html += '</div>';
     
           if (Array.isArray(item.contents) && item.contents.length) {
-            lines.push('   Contenus inclus :');
+            html += '<div class="content-list">';
             item.contents.forEach(function(content) {
-              lines.push(
-                '     - ' +
-                (content.content_title || content.content_code) +
-                ' [' +
-                (content.channel || 'email') +
-                ']'
-              );
+              html += '<div class="content-chip">';
+              html += escapeHtml(content.content_title || content.content_code);
+              html += '<small>' + escapeHtml(content.channel || 'email') + '</small>';
+              html += '</div>';
             });
+            html += '</div>';
           }
     
-          lines.push('');
+          html += '</div>';
+          html += '</div>';
         });
+    
+        html += '</div>';
       });
     
-      box.textContent = lines.join('\\n');
+      box.innerHTML = html;
     }
 
     async function reloadJobsAndEmails() {
