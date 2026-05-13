@@ -166,6 +166,71 @@ export default {
   }
 };
 
+function buildStepRenderedMessage(step, scenario, event, client, itemByCode, latestVersionByContentId) {
+  const logic = step.logic_json || {};
+  const rules = Array.isArray(logic.contents) ? logic.contents : [];
+  const renderContext = buildRenderContext(event, client, step, scenario);
+
+  const renderedBlocks = [];
+  const appliedVersions = [];
+  const previewBlocks = [];
+
+  let firstSubject = "";
+  let firstChannel = "";
+
+  for (const rule of rules) {
+    const contentItem = itemByCode.get(rule.content_code);
+    if (!contentItem) continue;
+
+    const version = latestVersionByContentId.get(contentItem.id);
+    if (!version) continue;
+
+    const subject = renderTemplate(version.sujet_template || contentItem.sujet || "", renderContext);
+    const body = renderTemplate(version.corps_template || "", renderContext);
+    const channel = String(contentItem.channel || "email").toLowerCase();
+
+    if (!firstSubject && subject) firstSubject = subject;
+    if (!firstChannel && channel) firstChannel = channel;
+
+    if (body) {
+      renderedBlocks.push(body);
+    }
+
+    appliedVersions.push({
+      content_code: rule.content_code,
+      content_item_id: contentItem.id,
+      content_version_id: version.id,
+      subject_rendered: subject,
+      channel: channel
+    });
+
+    previewBlocks.push({
+      content_code: rule.content_code,
+      content_title: contentItem.sujet || rule.content_code,
+      subject_rendered: subject,
+      channel: channel,
+      condition: rule.when || "always"
+    });
+  }
+
+  if (!renderedBlocks.length) return null;
+
+  const subjectRendered =
+    firstSubject ||
+    ("[Prévention routière] " + scenario.label + " - " + step.code);
+
+  return {
+    subjectRendered,
+    bodyRendered: renderedBlocks.join("\n\n"),
+    renderContext,
+    appliedVersions,
+    previewBlocks,
+    contentCount: previewBlocks.length,
+    isGroupedStep: previewBlocks.length > 1,
+    channel: firstChannel || "email"
+  };
+}
+
 async function launchManualScenario(env, payload) {
   const scenario_id = Number(payload && payload.scenario_id);
   const dry_run = !!(payload && payload.dry_run);
@@ -279,53 +344,45 @@ async function launchManualScenario(env, payload) {
       const plannedAt = computeStepPlannedAt(fakeEvent, step);
       const renderContext = buildRenderContext(fakeEvent, client, step, scenario);
 
-      const renderedBlocks = [];
-      const appliedVersions = [];
-      let firstSubject = "";
-
-      for (const rule of rules) {
-        const contentItem = itemByCode.get(rule.content_code);
-        if (!contentItem) continue;
-
-        const version = latestVersionByContentId.get(contentItem.id);
-        if (!version) continue;
-
-        const subject = renderTemplate(version.sujet_template || "", renderContext);
-        const body = renderTemplate(version.corps_template || "", renderContext);
-
-        if (!firstSubject && subject) {
-          firstSubject = subject;
-        }
-        if (body) {
-          renderedBlocks.push(body);
-        }
-
-        appliedVersions.push({
-          content_code: rule.content_code,
-          content_version_id: version.id
-        });
-      }
-
-      if (!renderedBlocks.length) {
+      const stepMessage = buildStepRenderedMessage(
+        step,
+        scenario,
+        fakeEvent,
+        client,
+        itemByCode,
+        latestVersionByContentId
+      );
+      
+      if (!stepMessage) {
         continue;
       }
-
-      const subjectRendered = firstSubject || ("[Prévention routière] " + scenario.label + " - " + step.code);
-      const bodyRendered = renderedBlocks.join("\n\n");
+      
+      const subjectRendered = stepMessage.subjectRendered;
+      const bodyRendered = stepMessage.bodyRendered;
 
       preview.push({
         client_id: client.id,
         client_email: client.email,
+      
         scenario_id: scenario.id,
         scenario_label: scenario.label,
         scenario_code: scenario.code,
+        scenario_aggregation_mode: scenario.aggregation_mode,
+      
         scenario_step_id: step.id,
         step_code: step.code,
+        step_order: step.step_order,
         step_window_ref: step.window_ref,
         step_window_min_hours: step.window_min_hours,
         step_window_max_hours: step.window_max_hours,
+      
         planned_send_at: plannedAt.toISOString(),
-        subject_rendered: subjectRendered
+        subject_rendered: subjectRendered,
+      
+        channel: stepMessage.channel,
+        content_count: stepMessage.contentCount,
+        is_grouped_step: stepMessage.isGroupedStep,
+        contents: stepMessage.previewBlocks
       });
 
       if (!dry_run) {
@@ -338,8 +395,8 @@ async function launchManualScenario(env, payload) {
           priority: scenario.priority || 50,
           subject_rendered: subjectRendered,
           body_rendered: bodyRendered,
-          render_context: renderContext,
-          applied_content_versions: appliedVersions,
+          render_context: stepMessage.renderContext,
+          applied_content_versions: stepMessage.appliedVersions,
           cooldown_key: "manual:" + technicalEvent.id + ":" + scenario.id + ":" + step.id + ":" + client.id,
           status: "ready",
           sent_at: null
@@ -1320,49 +1377,67 @@ function renderAppHtml() {
       }
     
       var lines = [];
+    
       lines.push('Résumé du lancement manuel');
       lines.push('');
       lines.push('Scénario : ' + (data.scenario_label || ''));
-      lines.push('Nombre de clients concernés : ' + (data.clients_concernes || 0));
-      lines.push('Nombre total de messages programmés : ' + (data.messages_programmes || 0));
+      lines.push('Clients concernés : ' + (data.clients_concernes || 0));
+      lines.push('Envois programmés : ' + (data.messages_programmes || 0));
       lines.push('');
     
-      var grouped = {};
+      var groupedByClient = {};
+    
       data.preview.forEach(function(item) {
         var key = item.client_email || ('client-' + item.client_id);
-        if (!grouped[key]) grouped[key] = [];
-        grouped[key].push(item);
+        if (!groupedByClient[key]) groupedByClient[key] = [];
+        groupedByClient[key].push(item);
       });
     
-      Object.keys(grouped).forEach(function(clientEmail) {
-        var items = grouped[clientEmail].slice().sort(function(a, b) {
-          var da = new Date(a.planned_send_at).getTime();
-          var db = new Date(b.planned_send_at).getTime();
-          return da - db;
+      Object.keys(groupedByClient).forEach(function(clientEmail) {
+        var items = groupedByClient[clientEmail].slice().sort(function(a, b) {
+          return new Date(a.planned_send_at).getTime() - new Date(b.planned_send_at).getTime();
         });
     
+        lines.push('────────────────────────────');
         lines.push('Destinataire : ' + clientEmail);
-        lines.push('Ordre des messages :');
+        lines.push('');
     
         items.forEach(function(item, index) {
+          lines.push((index + 1) + '. Moment d’envoi : ' + (item.step_code || 'Étape'));
+          lines.push('   Objet : ' + (item.subject_rendered || 'Sans objet'));
+          lines.push('   Envoi prévu : ' + formatDateFr(item.planned_send_at));
           lines.push(
-            '  ' + (index + 1) + '. ' +
-            (item.step_code || ('Étape ' + item.scenario_step_id))
-          );
-          lines.push('     Objet : ' + (item.subject_rendered || 'Sans objet'));
-          lines.push('     Envoi prévu : ' + formatDateFr(item.planned_send_at));
-          lines.push(
-            '     Base de calcul : ' +
+            '   Calcul : ' +
             translateWindowRef(item.step_window_ref) +
-            ' | fenêtre ' +
-            item.step_window_min_hours + 'h → ' + item.step_window_max_hours + 'h'
+            ' · ' +
+            item.step_window_max_hours +
+            'h avant'
           );
-        });
     
-        lines.push('');
+          if (item.is_grouped_step) {
+            lines.push('   Type : regroupement de ' + item.content_count + ' contenus');
+          } else {
+            lines.push('   Type : message simple');
+          }
+    
+          if (Array.isArray(item.contents) && item.contents.length) {
+            lines.push('   Contenus inclus :');
+            item.contents.forEach(function(content) {
+              lines.push(
+                '     - ' +
+                (content.content_title || content.content_code) +
+                ' [' +
+                (content.channel || 'email') +
+                ']'
+              );
+            });
+          }
+    
+          lines.push('');
+        });
       });
     
-      box.textContent = lines.join('\\n');
+      box.textContent = lines.join('\n');
     }
 
     async function reloadJobsAndEmails() {
