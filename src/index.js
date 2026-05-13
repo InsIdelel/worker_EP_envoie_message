@@ -1437,7 +1437,7 @@ function renderAppHtml() {
         });
       });
     
-      box.textContent = lines.join('\n');
+      box.textContent = lines.join('\\n');
     }
 
     async function reloadJobsAndEmails() {
