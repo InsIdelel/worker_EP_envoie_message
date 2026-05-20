@@ -1479,7 +1479,7 @@ function renderAppHtml() {
     <div class="brand">
       <img
         class="brand-logo"
-        src="URL_DU_LOGO_MOBISUR"
+        src="https://github.com/InsIdelel/link_supa/blob/2afa64e82ad35b9f800d0848598577e7cbcc46f4/public/img/logo_raw.png"
         alt="MobiSûr – Prévention routière des PME"
       />
     
