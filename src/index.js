@@ -58,12 +58,17 @@ export default {
           "id,email,zone_geo,active,siret",
           { active: "eq.true", order: "id.asc", limit: 1000 }
         );
+
         const zones = {};
         for (const c of clients) {
           const z = c.zone_geo || "(vide)";
           zones[z] = (zones[z] || 0) + 1;
         }
-        return withCors(json({ total_clients: clients.length, zones }));
+
+        return withCors(json({
+          total_clients: clients.length,
+          zones
+        }));
       }
 
       if (url.pathname === "/api/jobs" && request.method === "GET") {
@@ -80,12 +85,14 @@ export default {
           "id,email,zone_geo,siret",
           { active: "eq.true", limit: 2000 }
         );
+
         const scenarios = await supabaseSelect(
           env,
           "scenarios",
           "id,code,label",
           { limit: 1000 }
         );
+
         const steps = await supabaseSelect(
           env,
           "scenario_steps",
@@ -130,10 +137,12 @@ export default {
           "id,email,zone_geo,siret",
           { active: "eq.true", limit: 2000 }
         );
+
         const clientMap = new Map(clients.map(function (x) { return [x.id, x]; }));
 
         const enriched = rows.map(function (r) {
           const client = clientMap.get(r.client_id) || null;
+
           return {
             ...r,
             client_email: client ? client.email : null,
@@ -240,17 +249,21 @@ async function launchManualScenario(env, payload) {
   const target_client_ids = Array.isArray(payload && payload.target_client_ids)
     ? payload.target_client_ids.map(Number).filter(Boolean)
     : [];
+
   const start_at = payload && payload.start_at ? new Date(payload.start_at) : new Date();
 
   if (!scenario_id) {
     throw new Error("scenario_id est obligatoire");
   }
+
   if (target_mode === "zone" && !target_zone) {
     throw new Error("target_zone est obligatoire quand target_mode = zone");
   }
+
   if (target_mode === "client_ids" && !target_client_ids.length) {
     throw new Error("target_client_ids est obligatoire quand target_mode = client_ids");
   }
+
   if (isNaN(start_at.getTime())) {
     throw new Error("start_at invalide");
   }
@@ -260,7 +273,9 @@ async function launchManualScenario(env, payload) {
     active: "eq.true",
     limit: 1
   });
+
   const scenario = scenarioRows[0];
+
   if (!scenario) {
     throw new Error("Scénario introuvable ou inactif");
   }
@@ -270,11 +285,13 @@ async function launchManualScenario(env, payload) {
     active: "eq.true",
     order: "step_order.asc"
   });
+
   if (!steps.length) {
     throw new Error("Aucune étape active sur ce scénario");
   }
 
   const clients = await loadManualTargetClients(env, target_mode, target_zone, target_client_ids);
+
   if (!clients.length) {
     throw new Error("Aucun client correspondant à la cible choisie");
   }
@@ -320,6 +337,7 @@ async function launchManualScenario(env, payload) {
   }));
 
   const latestVersionByContentId = new Map();
+
   for (const v of contentVersions) {
     if (!latestVersionByContentId.has(v.content_item_id)) {
       latestVersionByContentId.set(v.content_item_id, v);
@@ -335,14 +353,9 @@ async function launchManualScenario(env, payload) {
   }
 
   for (const client of clients) {
-    for (let index = 0; index < steps.length; index++) {
-      const step = steps[index];
-      const logic = step.logic_json || {};
-      const rules = Array.isArray(logic.contents) ? logic.contents : [];
+    for (const step of steps) {
       const fakeEvent = technicalEvent || technicalEventPreview;
-
       const plannedAt = computeStepPlannedAt(fakeEvent, step);
-      const renderContext = buildRenderContext(fakeEvent, client, step, scenario);
 
       const stepMessage = buildStepRenderedMessage(
         step,
@@ -352,33 +365,29 @@ async function launchManualScenario(env, payload) {
         itemByCode,
         latestVersionByContentId
       );
-      
+
       if (!stepMessage) {
         continue;
       }
-      
+
       const subjectRendered = stepMessage.subjectRendered;
       const bodyRendered = stepMessage.bodyRendered;
 
       preview.push({
         client_id: client.id,
         client_email: client.email,
-      
         scenario_id: scenario.id,
         scenario_label: scenario.label,
         scenario_code: scenario.code,
         scenario_aggregation_mode: scenario.aggregation_mode,
-      
         scenario_step_id: step.id,
         step_code: step.code,
         step_order: step.step_order,
         step_window_ref: step.window_ref,
         step_window_min_hours: step.window_min_hours,
         step_window_max_hours: step.window_max_hours,
-      
         planned_send_at: plannedAt.toISOString(),
         subject_rendered: subjectRendered,
-      
         channel: stepMessage.channel,
         content_count: stepMessage.contentCount,
         is_grouped_step: stepMessage.isGroupedStep,
@@ -401,6 +410,7 @@ async function launchManualScenario(env, payload) {
           status: "ready",
           sent_at: null
         });
+
         created++;
       }
     }
@@ -479,7 +489,9 @@ async function loadManualTargetClients(env, target_mode, target_zone, target_cli
       order: "id.asc",
       limit: 1000
     });
+
     const wanted = new Set(target_client_ids);
+
     return all.filter(function (c) {
       return wanted.has(c.id);
     });
@@ -512,226 +524,226 @@ function buildManualDedupeKey(scenarioId) {
 }
 
 async function getExistingOutboundEmail(env, clientId, sendDate) {
-    const rows = await supabaseSelect(
-      env,
-      "outbound_emails",
-      "id,client_id,send_date,planned_send_at,subject_rendered,body_rendered,status,presta_id,sent_at",
-      {
-        client_id: "eq." + clientId,
-        send_date: "eq." + sendDate,
-        limit: 1
-      }
-    );
-  
-    return rows[0] || null;
-  }
+  const rows = await supabaseSelect(
+    env,
+    "outbound_emails",
+    "id,client_id,send_date,planned_send_at,subject_rendered,body_rendered,status,presta_id,sent_at",
+    {
+      client_id: "eq." + clientId,
+      send_date: "eq." + sendDate,
+      limit: 1
+    }
+  );
+
+  return rows[0] || null;
+}
 
 async function processDueMessages(env) {
-    const nowIso = new Date().toISOString();
-  
-    const dueItems = await supabaseSelect(
-      env,
-      "client_message_items",
-      "id,client_id,event_id,scenario_id,scenario_step_id,planned_send_at,priority,subject_rendered,body_rendered,render_context,applied_content_versions,status",
-      {
-        status: "eq.ready",
-        planned_send_at: "lte." + nowIso,
-        order: "planned_send_at.asc",
-        limit: 500
-      }
-    );
-  
-    if (!dueItems.length) {
-      return {
-        ok: true,
-        processed: 0,
-        sent: 0,
-        grouped_emails: 0,
-        message: "Aucun envoi dû."
-      };
+  const nowIso = new Date().toISOString();
+
+  const dueItems = await supabaseSelect(
+    env,
+    "client_message_items",
+    "id,client_id,event_id,scenario_id,scenario_step_id,planned_send_at,priority,subject_rendered,body_rendered,render_context,applied_content_versions,status",
+    {
+      status: "eq.ready",
+      planned_send_at: "lte." + nowIso,
+      order: "planned_send_at.asc",
+      limit: 500
     }
-  
-    const clients = await supabaseSelect(env, "clients", "id,email,zone_geo,siret", {
-      active: "eq.true"
-    });
-  
-    const clientMap = new Map(clients.map(function (c) {
-      return [c.id, c];
-    }));
-  
-    const groups = groupDueItemsByClientAndDate(dueItems);
-  
-    let sentGroups = 0;
-    let sentItems = 0;
-    const logs = [];
-  
-    for (const group of groups) {
-      try {
-        const client = clientMap.get(group.client_id);
-  
-        if (!client || !client.email) {
-          logs.push({
-            group_key: group.key,
-            step: "client_lookup",
-            status: "skipped",
-            reason: "client introuvable ou sans email"
-          });
-          continue;
-        }
-  
-        const sortedItems = group.items.slice().sort(function (a, b) {
-          return new Date(a.planned_send_at).getTime() - new Date(b.planned_send_at).getTime();
-        });
-  
-        const subject = buildAggregatedSubject(sortedItems);
-        const html = buildAggregatedHtml(sortedItems);
-        const text = stripHtml(html);
-  
-        let outbound = await getExistingOutboundEmail(env, group.client_id, group.send_date);
-  
-        if (outbound) {
-          logs.push({
-            group_key: group.key,
-            step: "find_outbound_email",
-            status: "ok",
-            mode: "existing",
-            outbound_email_id: outbound.id
-          });
-  
-          await supabasePatch(env, "outbound_emails", outbound.id, {
-            planned_send_at: sortedItems[0].planned_send_at,
-            subject_rendered: subject,
-            body_rendered: html,
-            status: "queued",
-            presta_id: null,
-            sent_at: null
-          });
-        } else {
-          outbound = await supabaseInsert(env, "outbound_emails", {
-            client_id: group.client_id,
-            send_date: group.send_date,
-            planned_send_at: sortedItems[0].planned_send_at,
-            subject_rendered: subject,
-            body_rendered: html,
-            status: "queued",
-            presta_id: null,
-            sent_at: null
-          });
-  
-          logs.push({
-            group_key: group.key,
-            step: "insert_outbound_emails",
-            status: "ok",
-            mode: "created",
-            outbound_email_id: outbound.id
-          });
-        }
-  
-        for (let i = 0; i < sortedItems.length; i++) {
-          const item = sortedItems[i];
-  
-          const existingLink = await supabaseSelect(
-            env,
-            "outbound_email_items",
-            "id,outbound_email_id,client_message_item_id",
-            {
-              outbound_email_id: "eq." + outbound.id,
-              client_message_item_id: "eq." + item.id,
-              limit: 1
-            }
-          );
-  
-          if (!existingLink.length) {
-            await supabaseInsert(env, "outbound_email_items", {
-              outbound_email_id: outbound.id,
-              client_message_item_id: item.id,
-              display_order: i + 1
-            });
-          }
-        }
-  
-        logs.push({
-          group_key: group.key,
-          step: "insert_outbound_email_items",
-          status: "ok",
-          items_count: sortedItems.length
-        });
-  
-        const sendResult = await sendEmail(env, {
-          to: client.email,
-          subject: subject,
-          html: html,
-          text: text
-        });
-  
-        logs.push({
-          group_key: group.key,
-          step: "mailgun_send",
-          status: "ok",
-          provider_id: sendResult.provider_id || null,
-          client_email: client.email
-        });
-  
-        await supabasePatch(env, "outbound_emails", outbound.id, {
-          status: "sent",
-          presta_id: sendResult.provider_id || "mail-provider",
-          sent_at: new Date().toISOString()
-        });
-  
-        for (const item of sortedItems) {
-          await supabasePatch(env, "client_message_items", item.id, {
-            status: "sent",
-            sent_at: new Date().toISOString()
-          });
-  
-          await supabaseInsert(env, "envois_log", {
-            outbound_email_id: outbound.id,
-            client_id: item.client_id,
-            event_id: item.event_id,
-            sent_at: new Date().toISOString(),
-            presta_id: sendResult.provider_id || "mail-provider",
-            message: item.body_rendered
-          });
-  
-          sentItems++;
-        }
-  
-        logs.push({
-          group_key: group.key,
-          step: "finalize",
-          status: "ok",
-          outbound_email_id: outbound.id,
-          items_sent: sortedItems.length
-        });
-  
-        sentGroups++;
-      } catch (e) {
-        logs.push({
-          group_key: group.key,
-          status: "error",
-          error: e.message || String(e)
-        });
-  
-        return {
-          ok: false,
-          processed: dueItems.length,
-          sent: sentItems,
-          grouped_emails: sentGroups,
-          failed_group: group.key,
-          logs: logs,
-          error: e.message || String(e)
-        };
-      }
-    }
-  
+  );
+
+  if (!dueItems.length) {
     return {
       ok: true,
-      processed: dueItems.length,
-      sent: sentItems,
-      grouped_emails: sentGroups,
-      logs: logs
+      processed: 0,
+      sent: 0,
+      grouped_emails: 0,
+      message: "Aucun envoi dû."
     };
   }
+
+  const clients = await supabaseSelect(env, "clients", "id,email,zone_geo,siret", {
+    active: "eq.true"
+  });
+
+  const clientMap = new Map(clients.map(function (c) {
+    return [c.id, c];
+  }));
+
+  const groups = groupDueItemsByClientAndDate(dueItems);
+
+  let sentGroups = 0;
+  let sentItems = 0;
+  const logs = [];
+
+  for (const group of groups) {
+    try {
+      const client = clientMap.get(group.client_id);
+
+      if (!client || !client.email) {
+        logs.push({
+          group_key: group.key,
+          step: "client_lookup",
+          status: "skipped",
+          reason: "client introuvable ou sans email"
+        });
+        continue;
+      }
+
+      const sortedItems = group.items.slice().sort(function (a, b) {
+        return new Date(a.planned_send_at).getTime() - new Date(b.planned_send_at).getTime();
+      });
+
+      const subject = buildAggregatedSubject(sortedItems);
+      const html = buildAggregatedHtml(sortedItems);
+      const text = stripHtml(html);
+
+      let outbound = await getExistingOutboundEmail(env, group.client_id, group.send_date);
+
+      if (outbound) {
+        logs.push({
+          group_key: group.key,
+          step: "find_outbound_email",
+          status: "ok",
+          mode: "existing",
+          outbound_email_id: outbound.id
+        });
+
+        await supabasePatch(env, "outbound_emails", outbound.id, {
+          planned_send_at: sortedItems[0].planned_send_at,
+          subject_rendered: subject,
+          body_rendered: html,
+          status: "queued",
+          presta_id: null,
+          sent_at: null
+        });
+      } else {
+        outbound = await supabaseInsert(env, "outbound_emails", {
+          client_id: group.client_id,
+          send_date: group.send_date,
+          planned_send_at: sortedItems[0].planned_send_at,
+          subject_rendered: subject,
+          body_rendered: html,
+          status: "queued",
+          presta_id: null,
+          sent_at: null
+        });
+
+        logs.push({
+          group_key: group.key,
+          step: "insert_outbound_emails",
+          status: "ok",
+          mode: "created",
+          outbound_email_id: outbound.id
+        });
+      }
+
+      for (let i = 0; i < sortedItems.length; i++) {
+        const item = sortedItems[i];
+
+        const existingLink = await supabaseSelect(
+          env,
+          "outbound_email_items",
+          "id,outbound_email_id,client_message_item_id",
+          {
+            outbound_email_id: "eq." + outbound.id,
+            client_message_item_id: "eq." + item.id,
+            limit: 1
+          }
+        );
+
+        if (!existingLink.length) {
+          await supabaseInsert(env, "outbound_email_items", {
+            outbound_email_id: outbound.id,
+            client_message_item_id: item.id,
+            display_order: i + 1
+          });
+        }
+      }
+
+      logs.push({
+        group_key: group.key,
+        step: "insert_outbound_email_items",
+        status: "ok",
+        items_count: sortedItems.length
+      });
+
+      const sendResult = await sendEmail(env, {
+        to: client.email,
+        subject: subject,
+        html: html,
+        text: text
+      });
+
+      logs.push({
+        group_key: group.key,
+        step: "mailgun_send",
+        status: "ok",
+        provider_id: sendResult.provider_id || null,
+        client_email: client.email
+      });
+
+      await supabasePatch(env, "outbound_emails", outbound.id, {
+        status: "sent",
+        presta_id: sendResult.provider_id || "mail-provider",
+        sent_at: new Date().toISOString()
+      });
+
+      for (const item of sortedItems) {
+        await supabasePatch(env, "client_message_items", item.id, {
+          status: "sent",
+          sent_at: new Date().toISOString()
+        });
+
+        await supabaseInsert(env, "envois_log", {
+          outbound_email_id: outbound.id,
+          client_id: item.client_id,
+          event_id: item.event_id,
+          sent_at: new Date().toISOString(),
+          presta_id: sendResult.provider_id || "mail-provider",
+          message: item.body_rendered
+        });
+
+        sentItems++;
+      }
+
+      logs.push({
+        group_key: group.key,
+        step: "finalize",
+        status: "ok",
+        outbound_email_id: outbound.id,
+        items_sent: sortedItems.length
+      });
+
+      sentGroups++;
+    } catch (e) {
+      logs.push({
+        group_key: group.key,
+        status: "error",
+        error: e.message || String(e)
+      });
+
+      return {
+        ok: false,
+        processed: dueItems.length,
+        sent: sentItems,
+        grouped_emails: sentGroups,
+        failed_group: group.key,
+        logs: logs,
+        error: e.message || String(e)
+      };
+    }
+  }
+
+  return {
+    ok: true,
+    processed: dueItems.length,
+    sent: sentItems,
+    grouped_emails: sentGroups,
+    logs: logs
+  };
+}
 
 function groupDueItemsByClientAndDate(items) {
   const map = new Map();
@@ -776,7 +788,7 @@ function buildAggregatedHtml(items) {
     return (
       '<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;" />' +
       '<h3 style="margin:0 0 12px 0;font-family:Arial,sans-serif;">' +
-      (index + 1) + '. ' + escapeHtmlForEmail(item.subject_rendered || 'Point de vigilance') +
+      (index + 1) + '. ' + escapeHtmlForEmail(item.subject_rendered || "Point de vigilance") +
       '</h3>' +
       '<div style="font-family:Arial,sans-serif;line-height:1.5;">' +
       (item.body_rendered || '') +
@@ -788,7 +800,7 @@ function buildAggregatedHtml(items) {
     '<p style="margin-top:24px;">Bonne diffusion interne.</p>';
 
   return (
-    '<div style="font-family:Arial,sans-serif;font-size:14px;color:#111827;">' +
+    '<div style="font-family:Arial,sans-serif;font-size:14px;color:#280c10;">' +
     intro +
     blocks.join('') +
     outro +
@@ -797,12 +809,12 @@ function buildAggregatedHtml(items) {
 }
 
 function escapeHtmlForEmail(value) {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function buildRenderContext(event, client, step, scenario) {
@@ -830,79 +842,87 @@ function renderTemplate(template, context) {
 }
 
 async function sendEmail(env, payload) {
-    const to = payload.to;
-    const subject = payload.subject;
-    const html = payload.html || "";
-    const text = payload.text || stripHtml(html);
-  
-    if (!env.MAILGUN_API_KEY) throw new Error("MAILGUN_API_KEY manquante");
-    if (!env.MAILGUN_DOMAIN) throw new Error("MAILGUN_DOMAIN manquant");
-    if (!env.MAIL_FROM) throw new Error("MAIL_FROM manquant");
-  
-    const baseUrl = (env.MAILGUN_BASE_URL || "https://api.mailgun.net").replace(/\/+$/, "");
-    const url = baseUrl + "/v3/" + env.MAILGUN_DOMAIN + "/messages";
-  
-    const form = new FormData();
-    form.append("from", env.MAIL_FROM);
-    form.append("to", to);
-    form.append("subject", subject);
-    form.append("html", html);
-    form.append("text", text);
-  
-    const auth = "Basic " + btoa("api:" + env.MAILGUN_API_KEY);
-  
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: auth
-      },
-      body: form
-    });
-  
-    if (!resp.ok) {
-      throw new Error("Erreur d’envoi Mailgun: " + (await resp.text()));
-    }
-  
-    const data = await resp.json();
-    return { provider_id: data.id || "mailgun" };
+  const to = payload.to;
+  const subject = payload.subject;
+  const html = payload.html || "";
+  const text = payload.text || stripHtml(html);
+
+  if (!env.MAILGUN_API_KEY) throw new Error("MAILGUN_API_KEY manquante");
+  if (!env.MAILGUN_DOMAIN) throw new Error("MAILGUN_DOMAIN manquant");
+  if (!env.MAIL_FROM) throw new Error("MAIL_FROM manquant");
+
+  const baseUrl = (env.MAILGUN_BASE_URL || "https://api.mailgun.net").replace(/\/+$/, "");
+  const url = baseUrl + "/v3/" + env.MAILGUN_DOMAIN + "/messages";
+
+  const form = new FormData();
+  form.append("from", env.MAIL_FROM);
+  form.append("to", to);
+  form.append("subject", subject);
+  form.append("html", html);
+  form.append("text", text);
+
+  const auth = "Basic " + btoa("api:" + env.MAILGUN_API_KEY);
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: auth
+    },
+    body: form
+  });
+
+  if (!resp.ok) {
+    throw new Error("Erreur d’envoi Mailgun: " + (await resp.text()));
   }
-  
-  function stripHtml(html) {
-    return String(html || "")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<\/p>/gi, "\n\n")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\n\s+\n/g, "\n\n")
-      .replace(/[ \t]+/g, " ")
-      .trim();
-  }
+
+  const data = await resp.json();
+  return { provider_id: data.id || "mailgun" };
+}
+
+function stripHtml(html) {
+  return String(html || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\n\s+\n/g, "\n\n")
+    .replace(/[ \t]+/g, " ")
+    .trim();
+}
 
 async function supabaseSelect(env, table, select, query) {
   ensureSupabaseEnv(env);
+
   const baseUrl = String(env.SUPABASE_URL).trim().replace(/\/+$/, "");
   const url = new URL(baseUrl + "/rest/v1/" + table);
   url.searchParams.set("select", select);
 
   const safeQuery = query || {};
+
   for (const entry of Object.entries(safeQuery)) {
     const k = entry[0];
     const v = entry[1];
+
     if (v !== undefined && v !== null && v !== "") {
       url.searchParams.set(k, v);
     }
   }
 
-  const resp = await fetch(url.toString(), { headers: supabaseHeaders(env) });
+  const resp = await fetch(url.toString(), {
+    headers: supabaseHeaders(env)
+  });
+
   if (!resp.ok) {
     throw new Error("Erreur Supabase SELECT " + table + ": " + (await resp.text()));
   }
+
   return await resp.json();
 }
 
 async function supabaseInsert(env, table, payload) {
   ensureSupabaseEnv(env);
+
   const baseUrl = String(env.SUPABASE_URL).trim().replace(/\/+$/, "");
 
   const resp = await fetch(baseUrl + "/rest/v1/" + table, {
@@ -918,12 +938,14 @@ async function supabaseInsert(env, table, payload) {
   if (!resp.ok) {
     throw new Error("Erreur Supabase INSERT " + table + ": " + (await resp.text()));
   }
+
   const rows = await resp.json();
   return rows[0];
 }
 
 async function supabasePatch(env, table, id, payload) {
   ensureSupabaseEnv(env);
+
   const baseUrl = String(env.SUPABASE_URL).trim().replace(/\/+$/, "");
 
   const resp = await fetch(baseUrl + "/rest/v1/" + table + "?id=eq." + id, {
@@ -939,6 +961,7 @@ async function supabasePatch(env, table, id, payload) {
   if (!resp.ok) {
     throw new Error("Erreur Supabase PATCH " + table + ": " + (await resp.text()));
   }
+
   const rows = await resp.json();
   return rows[0];
 }
@@ -947,6 +970,7 @@ function ensureSupabaseEnv(env) {
   if (!env.SUPABASE_URL) {
     throw new Error("SUPABASE_URL manquante dans les variables d’environnement Cloudflare");
   }
+
   if (!env.SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error("SUPABASE_SERVICE_ROLE_KEY manquante dans les variables d’environnement Cloudflare");
   }
@@ -978,7 +1002,11 @@ function withCors(response) {
   headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  return new Response(response.body, { status: response.status, headers: headers });
+
+  return new Response(response.body, {
+    status: response.status,
+    headers: headers
+  });
 }
 
 function renderAppHtml() {
@@ -987,295 +1015,516 @@ function renderAppHtml() {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pilotage des envois</title>
+  <title>MobiSûr – Pilotage des envois</title>
   <style>
-    body { font-family: Arial, sans-serif; background:#f5f7fb; color:#111827; margin:0; }
-    header { background:#111827; color:#fff; padding:18px 22px; }
-    main { padding:20px; max-width:1280px; margin:0 auto; }
-    .tabs { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
-    .tab { background:#e5e7eb; padding:10px 14px; border-radius:10px; cursor:pointer; border:none; }
-    .tab.active { background:#111827; color:#fff; }
-    .panel { display:none; }
-    .panel.active { display:block; }
-    .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-    .card { background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:16px; margin-bottom:16px; }
-    .muted { color:#6b7280; font-size:13px; }
-    .help { color:#6b7280; font-size:12px; margin-top:-6px; margin-bottom:10px; }
-    h1,h2,h3 { margin-top:0; }
-    button,input,select,textarea {
-      padding:10px 12px;
-      border-radius:10px;
-      border:1px solid #d1d5db;
-      box-sizing:border-box;
-      font-size:14px;
-      width:100%;
+    :root {
+      --brand-brown: #280c10;
+      --brand-blue: #3633d2;
+      --brand-blue-2: #3431d1;
+      --brand-yellow: #ffff66;
+      --bg: #f7f7fb;
+      --panel: rgba(255,255,255,.96);
+      --line: #e6e3ef;
+      --muted: #6f6570;
+      --soft-blue: #f0f0ff;
+      --soft-yellow: #ffffe2;
+      --danger: #b91c1c;
+      --success: #0f766e;
+      --shadow: 0 18px 50px rgba(40, 12, 16, .10);
+      --radius: 24px;
     }
-    button { cursor:pointer; background:#111827; color:#fff; border:none; }
-    button.secondary { background:#e5e7eb; color:#111827; }
-    button.success { background:#065f46; }
-    .row { display:flex; gap:10px; flex-wrap:wrap; }
-    .row > * { flex:1; }
-    .result {
-      white-space:pre-wrap;
-      background:#0f172a;
-      color:#e2e8f0;
-      border-radius:12px;
-      padding:12px;
-      font-size:13px;
-      min-height:140px;
-    }
-    .table-wrap { overflow:auto; }
-    table { width:100%; border-collapse:collapse; font-size:13px; }
-    th,td { padding:8px; border-bottom:1px solid #e5e7eb; text-align:left; vertical-align:top; }
-    th { background:#f9fafb; position:sticky; top:0; }
-    .pill { display:inline-block; background:#f3f4f6; border-radius:999px; padding:4px 8px; font-size:12px; }
-    .preview-box {
-      white-space:pre-wrap;
-      background:#fff;
-      border:1px solid #e5e7eb;
-      border-radius:12px;
-      padding:12px;
-      min-height:220px;
-    }
-    .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
-    .kpi { background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:16px; }
-    .kpi .v { font-size:28px; font-weight:bold; }
-    code { background:#f3f4f6; padding:2px 6px; border-radius:6px; color:#111827; }
-    @media (max-width: 980px) {
-      .grid, .kpis { grid-template-columns:1fr; }
-    }
+
+    * { box-sizing: border-box; }
+
     body {
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-  background: radial-gradient(circle at top left, #dbeafe, #f8fafc 42%, #eef2f7);
-  color: #0f172a;
-}
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(54, 51, 210, .13), transparent 34%),
+        radial-gradient(circle at top right, rgba(255, 255, 102, .35), transparent 24%),
+        var(--bg);
+      color: var(--brand-brown);
+    }
 
-header {
-  background: linear-gradient(135deg, #0f172a, #164e63 58%, #166534);
-  color: #fff;
-  padding: 34px;
-  border-radius: 0 0 34px 34px;
-  box-shadow: 0 22px 70px rgba(15, 23, 42, .18);
-}
+    header {
+      padding: 26px 24px;
+      background: white;
+      border-bottom: 1px solid var(--line);
+    }
 
-header h1 {
-  font-size: 38px;
-  letter-spacing: -.04em;
-  margin-bottom: 8px;
-}
+    .brand {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
 
-.tabs {
-  display: flex;
-  gap: 10px;
-  margin: 24px 0 18px;
-}
+    .brand-mark {
+      width: 82px;
+      height: 82px;
+      flex: 0 0 82px;
+      position: relative;
+      border-radius: 50%;
+      background: #fff;
+      border: 8px solid var(--brand-brown);
+      box-shadow: 0 12px 30px rgba(40,12,16,.14);
+    }
 
-.tab {
-  border: 1px solid #e2e8f0;
-  background: white;
-  color: #0f172a;
-  border-radius: 999px;
-  padding: 12px 16px;
-  font-weight: 850;
-}
+    .brand-mark::before {
+      content: "";
+      position: absolute;
+      inset: 12px;
+      border-radius: 50%;
+      border: 12px solid var(--brand-blue);
+      border-left-color: transparent;
+      transform: rotate(-16deg);
+    }
 
-.tab.active {
-  background: #0f172a;
-  color: white;
-}
+    .brand-mark::after {
+      content: "";
+      position: absolute;
+      left: 25px;
+      top: 30px;
+      width: 34px;
+      height: 20px;
+      border-radius: 999px;
+      background: var(--brand-blue);
+      box-shadow: 30px -30px 0 -7px var(--brand-blue);
+    }
 
-.card,
-.kpi {
-  background: rgba(255,255,255,.94);
-  border: 1px solid #e2e8f0;
-  border-radius: 24px;
-  box-shadow: 0 16px 42px rgba(15, 23, 42, .07);
-}
+    .brand-copy h1 {
+      margin: 0;
+      font-size: clamp(30px, 5vw, 52px);
+      line-height: .95;
+      letter-spacing: -.06em;
+      color: var(--brand-brown);
+    }
 
-.kpi .v {
-  font-size: 34px;
-  letter-spacing: -.04em;
-}
+    .brand-copy .baseline {
+      margin-top: 7px;
+      font-size: clamp(18px, 2.8vw, 30px);
+      font-weight: 850;
+      letter-spacing: -.04em;
+      color: var(--brand-blue);
+    }
 
-button {
-  border-radius: 15px;
-  font-weight: 850;
-}
+    main {
+      padding: 22px;
+      max-width: 1280px;
+      margin: 0 auto;
+    }
 
-.preview-box {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 22px;
-  padding: 16px;
-  min-height: 220px;
-  white-space: normal;
-}
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin: 4px 0 18px;
+      flex-wrap: wrap;
+    }
 
-.result {
-  display: none;
-}
+    .tab {
+      width: auto;
+      border: 1px solid var(--line);
+      background: white;
+      color: var(--brand-brown);
+      border-radius: 999px;
+      padding: 12px 16px;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(40,12,16,.04);
+    }
 
-.empty {
-  padding: 18px;
-  border: 1px dashed #cbd5e1;
-  border-radius: 18px;
-  background: #f8fafc;
-  color: #64748b;
-}
+    .tab.active {
+      background: var(--brand-blue);
+      color: white;
+      border-color: var(--brand-blue);
+    }
 
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin-bottom: 18px;
-}
+    .panel { display: none; }
+    .panel.active { display: block; }
 
-.summary-card {
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 18px;
-  padding: 14px;
-}
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
 
-.summary-card span {
-  display: block;
-  color: #64748b;
-  font-size: 12px;
-  margin-bottom: 4px;
-}
+    .card,
+    .kpi {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 18px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
 
-.summary-card b {
-  font-size: 18px;
-}
+    h2, h3 {
+      margin-top: 0;
+      color: var(--brand-brown);
+      letter-spacing: -.03em;
+    }
 
-.client-block {
-  margin-top: 18px;
-}
+    .muted {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
 
-.client-title {
-  font-weight: 900;
-  margin-bottom: 12px;
-}
+    .help {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: -6px;
+      margin-bottom: 10px;
+      line-height: 1.45;
+    }
 
-.timeline-row {
-  display: grid;
-  grid-template-columns: 46px 1fr;
-  gap: 12px;
-  margin-bottom: 12px;
-}
+    button,
+    input,
+    select,
+    textarea {
+      padding: 11px 12px;
+      border-radius: 14px;
+      border: 1px solid #d8d4e5;
+      box-sizing: border-box;
+      font-size: 14px;
+      width: 100%;
+      font-family: inherit;
+    }
 
-.timeline-dot {
-  width: 38px;
-  height: 38px;
-  border-radius: 14px;
-  display: grid;
-  place-items: center;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  color: #1d4ed8;
-  font-weight: 950;
-}
+    input,
+    select,
+    textarea {
+      background: white;
+      color: var(--brand-brown);
+    }
 
-.timeline-card {
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 22px;
-  padding: 16px;
-}
+    button {
+      cursor: pointer;
+      background: var(--brand-blue);
+      color: white;
+      border: none;
+      font-weight: 900;
+    }
 
-.timeline-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: flex-start;
-}
+    button.secondary {
+      background: var(--soft-blue);
+      color: var(--brand-blue);
+      border: 1px solid rgba(54,51,210,.20);
+    }
 
-.timeline-head b {
-  display: block;
-  font-size: 17px;
-}
+    button.success {
+      background: var(--brand-brown);
+      color: white;
+    }
 
-.timeline-head p {
-  margin: 4px 0 0;
-  color: #475569;
-}
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
 
-.badge {
-  white-space: nowrap;
-  background: #eff6ff;
-  color: #1d4ed8;
-  border-radius: 999px;
-  padding: 7px 10px;
-  font-size: 12px;
-  font-weight: 900;
-}
+    .row > * { flex: 1; }
 
-.meta-line {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 12px;
-  color: #64748b;
-  font-size: 13px;
-}
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
 
-.meta-line span {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 999px;
-  padding: 6px 9px;
-}
+    .kpi {
+      margin-bottom: 0;
+      position: relative;
+      overflow: hidden;
+    }
 
-.content-list {
-  margin-top: 12px;
-  display: grid;
-  gap: 8px;
-}
+    .kpi::after {
+      content: "";
+      position: absolute;
+      right: -20px;
+      top: -20px;
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: rgba(255,255,102,.45);
+    }
 
-.content-chip {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  padding: 10px 12px;
-  font-weight: 700;
-}
+    .kpi .v {
+      position: relative;
+      z-index: 1;
+      margin-top: 4px;
+      font-size: 34px;
+      font-weight: 950;
+      color: var(--brand-blue);
+      letter-spacing: -.05em;
+    }
 
-.content-chip small {
-  color: #64748b;
-  font-weight: 600;
-}
+    .table-wrap { overflow: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #faf9ff;
+      color: var(--brand-brown);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    .pill {
+      display: inline-block;
+      background: var(--soft-blue);
+      color: var(--brand-blue);
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .preview-box {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 16px;
+      min-height: 220px;
+      white-space: normal;
+      line-height: 1.45;
+    }
+
+    .result {
+      white-space: pre-wrap;
+      background: var(--brand-brown);
+      color: #fff;
+      border-radius: 16px;
+      padding: 12px;
+      font-size: 13px;
+      min-height: 140px;
+      margin-top: 12px;
+      overflow: auto;
+      max-height: 420px;
+    }
+
+    details summary {
+      cursor: pointer;
+      font-weight: 900;
+      color: var(--brand-blue);
+    }
+
+    .empty {
+      padding: 18px;
+      border: 1px dashed #c9c3d9;
+      border-radius: 18px;
+      background: #fbfaff;
+      color: var(--muted);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .summary-card {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px;
+    }
+
+    .summary-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    .summary-card b {
+      color: var(--brand-brown);
+      font-size: 18px;
+    }
+
+    .client-block {
+      margin-top: 18px;
+    }
+
+    .client-title {
+      font-weight: 950;
+      margin-bottom: 12px;
+      color: var(--brand-brown);
+    }
+
+    .timeline-row {
+      display: grid;
+      grid-template-columns: 46px 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .timeline-dot {
+      width: 38px;
+      height: 38px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background: var(--brand-blue);
+      color: white;
+      font-weight: 950;
+      box-shadow: 0 10px 22px rgba(54,51,210,.20);
+    }
+
+    .timeline-card {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 16px;
+    }
+
+    .timeline-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .timeline-head b {
+      display: block;
+      font-size: 17px;
+      color: var(--brand-brown);
+    }
+
+    .timeline-head p {
+      margin: 4px 0 0;
+      color: var(--muted);
+    }
+
+    .badge {
+      white-space: nowrap;
+      background: var(--soft-yellow);
+      color: var(--brand-brown);
+      border: 1px solid rgba(40,12,16,.12);
+      border-radius: 999px;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .meta-line {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .meta-line span {
+      background: #fbfaff;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 9px;
+    }
+
+    .content-list {
+      margin-top: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .content-chip {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      background: #fbfaff;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px 12px;
+      font-weight: 800;
+    }
+
+    .content-chip small {
+      color: var(--brand-blue);
+      font-weight: 800;
+    }
+
+    @media (max-width: 980px) {
+      .grid,
+      .kpis,
+      .summary-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .timeline-row {
+        grid-template-columns: 1fr;
+      }
+
+      .timeline-dot {
+        display: none;
+      }
+    }
   </style>
 </head>
+
 <body>
   <header>
-    <h1>Pilotage des envois</h1>
-    <div class="muted" style="color:#cbd5e1;">Suivi automatique + lancement manuel d’un scénario</div>
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"></div>
+      <div class="brand-copy">
+        <h1>MobiSûr.</h1>
+        <div class="baseline">Prévention routière des PME</div>
+        <div class="muted" style="margin-top:8px;">Pilotage des envois et programmation des scénarios</div>
+      </div>
+    </div>
   </header>
 
   <main>
     <div class="tabs">
-      <button type="button" onclick="showPanel('auto')" id="tabAuto" class="tab active">Suivi automatique</button>
-      <button type="button" onclick="showPanel('manual')" id="tabManual" class="tab">Lancement manuel</button>
+      <button type="button" onclick="showPanel('auto')" id="tabAuto" class="tab active">Suivi des envois</button>
+      <button type="button" onclick="showPanel('manual')" id="tabManual" class="tab">Programmer un scénario</button>
     </div>
 
     <div id="panelAuto" class="panel active">
       <div class="kpis">
-        <div class="kpi"><div class="muted">Messages programmés</div><div class="v" id="kpiJobs">0</div></div>
-        <div class="kpi"><div class="muted">Prêts à partir</div><div class="v" id="kpiReady">0</div></div>
-        <div class="kpi"><div class="muted">Déjà envoyés</div><div class="v" id="kpiSent">0</div></div>
-        <div class="kpi"><div class="muted">Emails générés</div><div class="v" id="kpiEmails">0</div></div>
+        <div class="kpi">
+          <div class="muted">Envois planifiés</div>
+          <div class="v" id="kpiJobs">0</div>
+        </div>
+        <div class="kpi">
+          <div class="muted">À envoyer</div>
+          <div class="v" id="kpiReady">0</div>
+        </div>
+        <div class="kpi">
+          <div class="muted">Envoyés</div>
+          <div class="v" id="kpiSent">0</div>
+        </div>
+        <div class="kpi">
+          <div class="muted">Emails créés</div>
+          <div class="v" id="kpiEmails">0</div>
+        </div>
       </div>
 
       <div class="card" style="margin-top:16px;">
-        <h2>Messages programmés</h2>
+        <h2>Envois planifiés</h2>
+        <p class="muted">Liste des messages programmés par client, scénario et moment d’envoi.</p>
+
         <div class="row" style="margin-bottom:12px;">
           <input id="jobsFilter" placeholder="Filtrer par client, scénario, statut..." />
           <button type="button" class="secondary" onclick="reloadJobsAndEmails()">Rafraîchir</button>
-          <button type="button" class="secondary" onclick="processDue()">Traiter les envois dus maintenant</button>
+          <button type="button" class="secondary" onclick="processDue()">Envoyer les messages prêts</button>
         </div>
+
         <div class="table-wrap">
           <table>
             <thead>
@@ -1296,6 +1545,8 @@ button {
 
       <div class="card">
         <h2>Emails générés</h2>
+        <p class="muted">Emails réellement créés après agrégation des messages dus par client et par jour.</p>
+
         <div class="table-wrap">
           <table>
             <thead>
@@ -1316,52 +1567,52 @@ button {
     <div id="panelManual" class="panel">
       <div class="grid">
         <div class="card">
-          <h2>1. Choisir un scénario</h2>
+          <h2>1. Choisir le scénario</h2>
           <select id="scenarioSelect"></select>
           <div class="help">Choisissez le scénario que vous souhaitez lancer manuellement.</div>
           <div id="scenarioInfo" class="preview-box"></div>
         </div>
 
         <div class="card">
-          <h2>2. Choisir la cible</h2>
+          <h2>2. Choisir les destinataires</h2>
           <select id="targetMode">
             <option value="all">Tous les clients actifs</option>
             <option value="zone">Clients d’une zone</option>
           </select>
-          <input id="targetZone" placeholder="Ex. 56" style="display:none;" />
-          <div class="help">En mode manuel, l’interface crée en interne un événement technique caché de type MANUAL_TRIGGER.</div>
+          <input id="targetZone" placeholder="Ex. 56" style="display:none;margin-top:10px;" />
+          <div class="help">En mode manuel, l’interface crée un événement technique caché de type MANUAL_TRIGGER.</div>
           <div id="clientSummary" class="preview-box"></div>
         </div>
       </div>
 
       <div class="grid">
         <div class="card">
-          <h2>3. Date et heure de référence</h2>
+          <h2>3. Date de référence</h2>
           <input id="startAt" type="datetime-local" />
-          <div class="help">Cette date sert de référence pour calculer la programmation de chaque étape, selon sa référence temporelle et sa fenêtre.</div>
+          <div class="help">Cette date sert de référence pour calculer la programmation de chaque étape.</div>
         </div>
 
         <div class="card">
-          <h2>4. Aperçu du lancement</h2>
+          <h2>4. Simuler ou programmer</h2>
           <div class="row">
             <button type="button" class="secondary" onclick="simulateManual()">Simuler</button>
             <button type="button" onclick="launchManual(false)">Programmer</button>
-            <button type="button" class="success" onclick="launchManual(true)">Programmer et envoyer ce qui est dû maintenant</button>
+            <button type="button" class="success" onclick="launchManual(true)">Programmer et envoyer ce qui est dû</button>
           </div>
-          <div class="help">La simulation vous montre la date réelle programmée pour chaque étape, en respectant la logique temporelle définie dans l’admin.</div>
+          <div class="help">La simulation montre les envois qui seraient programmés, sans modifier la base.</div>
         </div>
+      </div>
+
+      <div class="card">
+        <h2>Séquence prévue</h2>
+        <div class="help">Chaque carte correspond à un moment d’envoi. Une carte peut regrouper plusieurs contenus.</div>
+        <div id="manualPreview" class="preview-box">Lancez une simulation pour voir le détail.</div>
       </div>
 
       <details class="card">
         <summary>Détails techniques</summary>
         <div id="result" class="result">Aucune action exécutée.</div>
       </details>
-
-      <div class="card">
-        <h2>Prévisualisation humaine</h2>
-        <div class="help">Chaque étape est programmée à l’entrée de sa fenêtre temporelle, telle qu’elle a été définie dans l’interface d’administration.</div>
-        <div id="manualPreview" class="preview-box">Lancez une simulation pour voir le détail.</div>
-      </div>
     </div>
   </main>
 
@@ -1408,9 +1659,11 @@ button {
         }
 
         scenarios = scenariosData;
+
         fillScenarios();
         setDefaultStartAt();
         toggleTargetInputs();
+
         await loadClientSummary();
         await reloadJobsAndEmails();
 
@@ -1418,7 +1671,8 @@ button {
         document.getElementById('targetMode').addEventListener('change', toggleTargetInputs);
         document.getElementById('targetZone').addEventListener('input', loadClientSummary);
       } catch (e) {
-        document.getElementById('result').textContent = 'Erreur au chargement :\\n\\n' + (e.message || String(e));
+        document.getElementById('result').textContent =
+          'Erreur au chargement :\\n\\n' + (e.message || String(e));
       }
     }
 
@@ -1461,10 +1715,13 @@ button {
     async function updateScenarioInfo() {
       var id = Number(document.getElementById('scenarioSelect').value);
       var sc = scenarios.find(function(x) { return x.id === id; });
+
       if (!sc) return;
-    
-      var steps = await fetch('/api/scenarios/' + id + '/steps').then(function(r) { return r.json(); });
-    
+
+      var steps = await fetch('/api/scenarios/' + id + '/steps').then(function(r) {
+        return r.json();
+      });
+
       var lines = [];
       lines.push('Scénario sélectionné');
       lines.push('');
@@ -1473,21 +1730,25 @@ button {
       lines.push('Mode : ' + sc.aggregation_mode);
       lines.push('Priorité : ' + sc.priority);
       lines.push('');
-    
-      lines.push('Ordre des messages prévus :');
-    
+      lines.push('Ordre des moments d’envoi :');
+
       if (Array.isArray(steps) && steps.length) {
         steps.forEach(function(s, idx) {
+          var contents = s.logic_json && Array.isArray(s.logic_json.contents)
+            ? s.logic_json.contents.length
+            : 0;
+
           lines.push(
             (idx + 1) + '. Étape ' + s.code +
             ' | référence : ' + translateWindowRef(s.window_ref) +
-            ' | fenêtre : ' + s.window_min_hours + 'h → ' + s.window_max_hours + 'h'
+            ' | envoi : ' + s.window_max_hours + 'h avant' +
+            ' | contenus : ' + contents
           );
         });
       } else {
         lines.push('Aucune étape active');
       }
-    
+
       document.getElementById('scenarioInfo').textContent = lines.join('\\n');
     }
 
@@ -1498,40 +1759,45 @@ button {
     }
 
     async function loadClientSummary() {
-        var data = await fetch('/api/clients/summary').then(function(r) { return r.json(); });
-        var mode = document.getElementById('targetMode').value;
-        var zone = document.getElementById('targetZone').value.trim();
-        var lines = [];
-      
-        lines.push('Résumé de la cible');
+      var data = await fetch('/api/clients/summary').then(function(r) {
+        return r.json();
+      });
+
+      var mode = document.getElementById('targetMode').value;
+      var zone = document.getElementById('targetZone').value.trim();
+      var lines = [];
+
+      lines.push('Résumé de la cible');
+      lines.push('');
+
+      if (mode === 'all') {
+        lines.push('Cible choisie : tous les clients actifs');
+      } else if (mode === 'zone') {
+        lines.push('Cible choisie : clients de la zone ' + (zone || '(non renseignée)'));
+      }
+
+      lines.push('Nombre total de clients actifs : ' + data.total_clients);
+
+      var zones = data.zones || {};
+      var zoneKeys = Object.keys(zones).sort();
+
+      if (zoneKeys.length) {
         lines.push('');
-      
-        if (mode === 'all') {
-          lines.push('Cible choisie : tous les clients actifs');
-        } else if (mode === 'zone') {
-          lines.push('Cible choisie : clients de la zone ' + (zone || '(non renseignée)'));
-        }
-      
-        lines.push('Nombre total de clients actifs : ' + data.total_clients);
-      
-        var zones = data.zones || {};
-        var zoneKeys = Object.keys(zones).sort();
-      
-        if (zoneKeys.length) {
-          lines.push('');
-          lines.push('Répartition par zone :');
-          zoneKeys.forEach(function(z) {
-            lines.push('- Zone ' + z + ' : ' + zones[z] + ' client(s)');
-          });
-        }
-  
-    document.getElementById('clientSummary').textContent = lines.join('\\n');
-  }
+        lines.push('Répartition par zone :');
+
+        zoneKeys.forEach(function(z) {
+          lines.push('- Zone ' + z + ' : ' + zones[z] + ' client(s)');
+        });
+      }
+
+      document.getElementById('clientSummary').textContent = lines.join('\\n');
+    }
 
     function buildManualPayload(dryRun, sendNow) {
       var scenario_id = Number(document.getElementById('scenarioSelect').value);
       var target_mode = document.getElementById('targetMode').value;
       var target_zone = document.getElementById('targetZone').value.trim();
+
       var start_at = document.getElementById('startAt').value
         ? new Date(document.getElementById('startAt').value).toISOString()
         : null;
@@ -1572,52 +1838,54 @@ button {
       var data = await res.json();
       document.getElementById('result').textContent = JSON.stringify(data, null, 2);
       renderManualPreview(data);
+
       await reloadJobsAndEmails();
     }
 
     function renderManualPreview(data) {
       var box = document.getElementById('manualPreview');
-    
+
       if (!data || !Array.isArray(data.preview)) {
         box.innerHTML = '<div class="empty">Aucune prévisualisation disponible.</div>';
         return;
       }
-    
+
       if (!data.preview.length) {
         box.innerHTML = '<div class="empty">Aucun envoi ne serait programmé pour la cible choisie.</div>';
         return;
       }
-    
+
       var groupedByClient = {};
-    
+
       data.preview.forEach(function(item) {
         var key = item.client_email || ('client-' + item.client_id);
         if (!groupedByClient[key]) groupedByClient[key] = [];
         groupedByClient[key].push(item);
       });
-    
+
       var html = '';
-    
+
       html += '<div class="summary-grid">';
       html += '<div class="summary-card"><span>Scénario</span><b>' + escapeHtml(data.scenario_label || '') + '</b></div>';
       html += '<div class="summary-card"><span>Clients concernés</span><b>' + escapeHtml(data.clients_concernes || 0) + '</b></div>';
       html += '<div class="summary-card"><span>Envois programmés</span><b>' + escapeHtml(data.messages_programmes || 0) + '</b></div>';
       html += '</div>';
-    
+
       Object.keys(groupedByClient).forEach(function(clientEmail) {
         var items = groupedByClient[clientEmail].slice().sort(function(a, b) {
           return new Date(a.planned_send_at).getTime() - new Date(b.planned_send_at).getTime();
         });
-    
+
         html += '<div class="client-block">';
         html += '<div class="client-title">Destinataire : ' + escapeHtml(clientEmail) + '</div>';
-    
+
         items.forEach(function(item, index) {
           var grouped = item.is_grouped_step;
+
           var typeLabel = grouped
             ? 'Regroupement de ' + item.content_count + ' contenus'
             : 'Message simple';
-    
+
           html += '<div class="timeline-row">';
           html += '<div class="timeline-dot">' + escapeHtml(index + 1) + '</div>';
           html += '<div class="timeline-card">';
@@ -1628,30 +1896,32 @@ button {
           html += '</div>';
           html += '<span class="badge">' + escapeHtml(typeLabel) + '</span>';
           html += '</div>';
-    
+
           html += '<div class="meta-line">';
           html += '<span>Envoi prévu : <strong>' + escapeHtml(formatDateFr(item.planned_send_at)) + '</strong></span>';
           html += '<span>Calcul : ' + escapeHtml(translateWindowRef(item.step_window_ref)) + ' · ' + escapeHtml(item.step_window_max_hours) + 'h avant</span>';
           html += '</div>';
-    
+
           if (Array.isArray(item.contents) && item.contents.length) {
             html += '<div class="content-list">';
+
             item.contents.forEach(function(content) {
               html += '<div class="content-chip">';
               html += escapeHtml(content.content_title || content.content_code);
               html += '<small>' + escapeHtml(content.channel || 'email') + '</small>';
               html += '</div>';
             });
+
             html += '</div>';
           }
-    
+
           html += '</div>';
           html += '</div>';
         });
-    
+
         html += '</div>';
       });
-    
+
       box.innerHTML = html;
     }
 
@@ -1672,8 +1942,12 @@ button {
     }
 
     async function reloadJobs() {
-      var rows = await fetch('/api/jobs').then(function(r) { return r.json(); });
+      var rows = await fetch('/api/jobs').then(function(r) {
+        return r.json();
+      });
+
       jobsData = Array.isArray(rows) ? rows : [];
+
       renderJobsTable();
       computeKpis();
     }
@@ -1686,6 +1960,7 @@ button {
       jobsData
         .filter(function(r) {
           if (!filter) return true;
+
           var txt = [
             r.id,
             r.client_email,
@@ -1698,36 +1973,45 @@ button {
             r.subject_rendered,
             r.status
           ].join(' ').toLowerCase();
+
           return txt.indexOf(filter) !== -1;
         })
         .forEach(function(r) {
           var tr = document.createElement('tr');
+
           tr.innerHTML =
-            '<td>' + r.id + '</td>' +
-            '<td>' + (r.client_email || r.client_id) + '</td>' +
-            '<td>' + (r.scenario_label || r.scenario_code || r.scenario_id) + '</td>' +
-            '<td>' + (r.step_code || r.scenario_step_id) + '</td>' +
-            '<td>' + (r.planned_send_at || '') + '</td>' +
-            '<td>' + (r.subject_rendered || '') + '</td>' +
-            '<td><span class="pill">' + r.status + '</span></td>';
+            '<td>' + escapeHtml(r.id) + '</td>' +
+            '<td>' + escapeHtml(r.client_email || r.client_id) + '</td>' +
+            '<td>' + escapeHtml(r.scenario_label || r.scenario_code || r.scenario_id) + '</td>' +
+            '<td>' + escapeHtml(r.step_code || r.scenario_step_id) + '</td>' +
+            '<td>' + escapeHtml(r.planned_send_at || '') + '</td>' +
+            '<td>' + escapeHtml(r.subject_rendered || '') + '</td>' +
+            '<td><span class="pill">' + escapeHtml(r.status || '') + '</span></td>';
+
           body.appendChild(tr);
         });
     }
 
     async function reloadEmails() {
-      var rows = await fetch('/api/outbound-emails').then(function(r) { return r.json(); });
+      var rows = await fetch('/api/outbound-emails').then(function(r) {
+        return r.json();
+      });
+
       emailsData = Array.isArray(rows) ? rows : [];
+
       var body = document.getElementById('emailsBody');
       body.innerHTML = '';
 
       emailsData.forEach(function(r) {
         var tr = document.createElement('tr');
+
         tr.innerHTML =
-          '<td>' + r.id + '</td>' +
-          '<td>' + (r.client_email || r.client_id) + '</td>' +
-          '<td>' + (r.send_date || '') + '</td>' +
-          '<td>' + (r.subject_rendered || '') + '</td>' +
-          '<td><span class="pill">' + r.status + '</span></td>';
+          '<td>' + escapeHtml(r.id) + '</td>' +
+          '<td>' + escapeHtml(r.client_email || r.client_id) + '</td>' +
+          '<td>' + escapeHtml(r.send_date || '') + '</td>' +
+          '<td>' + escapeHtml(r.subject_rendered || '') + '</td>' +
+          '<td><span class="pill">' + escapeHtml(r.status || '') + '</span></td>';
+
         body.appendChild(tr);
       });
 
@@ -1738,26 +2022,28 @@ button {
       try {
         var response = await fetch('/api/process-due', { method: 'POST' });
         var text = await response.text();
-    
+
         console.log('HTTP status /api/process-due =', response.status);
         console.log('Réponse brute /api/process-due =', text);
-    
+
         var data;
+
         try {
           data = JSON.parse(text);
         } catch (e) {
           throw new Error('La réponse n’est pas un JSON valide : ' + text);
         }
-    
+
         document.getElementById('result').textContent = JSON.stringify(data, null, 2);
-    
+
         if (!response.ok) {
           throw new Error(data.error || 'Erreur HTTP ' + response.status);
         }
-    
+
         await reloadJobsAndEmails();
       } catch (e) {
         console.error('Erreur processDue()', e);
+
         document.getElementById('result').textContent =
           'Erreur lors du traitement des envois dus :\\n\\n' + (e.message || String(e));
       }
