@@ -1071,26 +1071,23 @@ function renderAppHtml() {
       box-shadow: 0 12px 30px rgba(40,12,16,.14);
     }
 
-    .brand-mark::before {
-      content: "";
-      position: absolute;
-      inset: 12px;
-      border-radius: 50%;
-      border: 12px solid var(--brand-blue);
-      border-left-color: transparent;
-      transform: rotate(-16deg);
+    .brand-logo {
+      width: min(420px, 72vw);
+      height: auto;
+      display: block;
     }
-
-    .brand-mark::after {
-      content: "";
-      position: absolute;
-      left: 25px;
-      top: 30px;
-      width: 34px;
-      height: 20px;
-      border-radius: 999px;
-      background: var(--brand-blue);
-      box-shadow: 30px -30px 0 -7px var(--brand-blue);
+    
+    .brand {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      flex-wrap: wrap;
+    }
+    
+    .brand-copy {
+      min-width: 260px;
     }
 
     .brand-copy h1 {
@@ -1480,11 +1477,16 @@ function renderAppHtml() {
 <body>
   <header>
     <div class="brand">
-      <div class="brand-mark" aria-hidden="true"></div>
+      <img
+        class="brand-logo"
+        src="URL_DU_LOGO_MOBISUR"
+        alt="MobiSûr – Prévention routière des PME"
+      />
+    
       <div class="brand-copy">
-        <h1>MobiSûr.</h1>
-        <div class="baseline">Prévention routière des PME</div>
-        <div class="muted" style="margin-top:8px;">Pilotage des envois et programmation des scénarios</div>
+        <div class="muted" style="margin-top:8px;">
+          Pilotage des envois et programmation des scénarios
+        </div>
       </div>
     </div>
   </header>
